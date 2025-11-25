@@ -3,12 +3,17 @@ nixPkgs = ["nodejs-18_x"]
 
 [phases.install]
 cmds = [
+  "npm install || true",
   "cd backend && npm install",
   "cd ../web && npm install"
 ]
 
 [phases.build]
-cmds = ["cd web && npm run build"]
+cmds = [
+  "cd web && npm run build",
+  "echo 'Web build completed. Checking dist directory:'",
+  "ls -la web/dist || echo 'dist directory not found'"
+]
 
 # Migrations should NOT run in build phase - database not available yet
 # Migrations run in release phase (Procfile) or on server startup
