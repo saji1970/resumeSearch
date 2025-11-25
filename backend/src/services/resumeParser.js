@@ -14,6 +14,11 @@ function getOpenAIClient() {
 
 async function parseResume(filePath, mimeType) {
   try {
+    // Check if OpenAI API key is configured
+    if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'your-openai-api-key') {
+      throw new Error('OPENAI_API_KEY is not configured');
+    }
+    
     // Read file content
     let fileContent;
     
