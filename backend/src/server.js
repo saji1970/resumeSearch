@@ -28,12 +28,63 @@ app.use('/api/jobs', require('./routes/jobs'));
 app.use('/api/applications', require('./routes/applications'));
 app.use('/api/ai', require('./routes/ai'));
 
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'AI Job Search API',
+    version: '1.0.0',
+    endpoints: {
+      health: '/api/health',
+      auth: '/api/auth',
+      users: '/api/users',
+      resumes: '/api/resumes',
+      jobs: '/api/jobs',
+      applications: '/api/applications',
+      ai: '/api/ai'
+    }
+  });
+});
+
 // Health check - simple endpoint to verify server is running
 // Doesn't check database to avoid blocking during migrations
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString()
+  });
+});
+
+// 404 handler for undefined routes
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'Route not found',
+    path: req.path,
+    method: req.method,
+    message: `The endpoint ${req.method} ${req.path} does not exist.`,
+    availableEndpoints: {
+      root: 'GET /',
+      health: 'GET /api/health',
+      auth: {
+        register: 'POST /api/auth/register',
+        login: 'POST /api/auth/login',
+        me: 'GET /api/auth/me'
+      },
+      jobs: {
+        list: 'GET /api/jobs',
+        detail: 'GET /api/jobs/:id',
+        search: 'GET /api/jobs?search=...'
+      },
+      resumes: {
+        upload: 'POST /api/resumes/upload',
+        list: 'GET /api/resumes',
+        master: 'GET /api/resumes/master'
+      },
+      ai: {
+        chat: 'POST /api/ai/chat',
+        coverLetter: 'POST /api/ai/cover-letter',
+        uploadCV: 'POST /api/ai/chat/upload-cv'
+      }
+    }
   });
 });
 
