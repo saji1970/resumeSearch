@@ -4,8 +4,8 @@ nixPkgs = ["nodejs-18_x"]
 [phases.install]
 cmds = ["cd backend && npm install"]
 
-[phases.build]
-cmds = ["cd backend && npm run migrate"]
+# Migrations should NOT run in build phase - database not available yet
+# Migrations run in release phase (Procfile) or on server startup
 
 [start]
 cmd = "cd backend && npm start"
