@@ -11,9 +11,15 @@ const fs = require('fs').promises;
 
 const router = express.Router();
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+// Lazy initialization of OpenAI client (only when needed and API key is available)
+function getOpenAIClient() {
+  if (!process.env.OPENAI_API_KEY) {
+    return null; // Return null if API key not configured
+  }
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY
+  });
+}
 
 // Configure multer for CV uploads in chat
 const storage = multer.diskStorage({
@@ -98,6 +104,13 @@ Write a compelling, personalized cover letter that:
 
 Keep it professional, concise (3-4 paragraphs), and engaging.`;
 
+    const openai = getOpenAIClient();
+    if (!openai) {
+      return res.status(503).json({ 
+        error: 'OpenAI API key is not configured. Please configure OPENAI_API_KEY in environment variables.' 
+      });
+    }
+    
     const response = await openai.chat.completions.create({
       model: 'gpt-4',
       messages: [
@@ -515,6 +528,11 @@ Your Response Should:
     if (hasOpenAIKey) {
       try {
         // Use OpenAI for better conversational responses with NLP understanding
+        const openai = getOpenAIClient();
+        if (!openai) {
+          throw new Error('OpenAI client not available');
+        }
+        
         const response = await openai.chat.completions.create({
           model: 'gpt-3.5-turbo',
           messages: [

@@ -2,9 +2,15 @@ const OpenAI = require('openai');
 const fs = require('fs').promises;
 const path = require('path');
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+// Lazy initialization of OpenAI client (only when needed and API key is available)
+function getOpenAIClient() {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is not configured');
+  }
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY
+  });
+}
 
 async function parseResume(filePath, mimeType) {
   try {
@@ -69,6 +75,9 @@ async function parseResume(filePath, mimeType) {
 Resume content:
 ${fileContent.substring(0, 10000)}`;
 
+    // Get OpenAI client (will throw if API key not configured)
+    const openai = getOpenAIClient();
+    
     const response = await openai.chat.completions.create({
       model: 'gpt-4',
       messages: [
