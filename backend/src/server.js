@@ -22,14 +22,20 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Serve static files from web build (if exists)
 const webBuildPath = path.join(__dirname, '../../web/dist');
-try {
-  const fs = require('fs');
-  if (fs.existsSync(webBuildPath)) {
-    app.use(express.static(webBuildPath));
-    console.log('Serving web frontend from:', webBuildPath);
+const fs = require('fs');
+if (fs.existsSync(webBuildPath)) {
+  app.use(express.static(webBuildPath));
+  console.log('✅ Serving web frontend from:', webBuildPath);
+} else {
+  console.log('⚠️  Web frontend not found at:', webBuildPath);
+  console.log('   Current working directory:', process.cwd());
+  console.log('   __dirname:', __dirname);
+  // Try alternative path (in case of different directory structure)
+  const altPath = path.join(process.cwd(), 'web/dist');
+  if (fs.existsSync(altPath)) {
+    app.use(express.static(altPath));
+    console.log('✅ Serving web frontend from alternative path:', altPath);
   }
-} catch (error) {
-  console.log('Web frontend not found, serving API only');
 }
 
 // Routes
