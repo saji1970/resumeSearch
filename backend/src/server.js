@@ -28,9 +28,13 @@ app.use('/api/jobs', require('./routes/jobs'));
 app.use('/api/applications', require('./routes/applications'));
 app.use('/api/ai', require('./routes/ai'));
 
-// Health check
+// Health check - simple endpoint to verify server is running
+// Doesn't check database to avoid blocking during migrations
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Error handling middleware
@@ -46,23 +50,21 @@ app.use((err, req, res, next) => {
 
 // Only start server if not in test environment and not imported
 if (process.env.NODE_ENV !== 'test' && require.main === module) {
-  // Run migrations on startup (with error handling)
-  const migrate = require('./database/migrate');
-  migrate()
-    .then(() => {
-      console.log('Migrations completed, starting server...');
-      app.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
+  // Start server immediately (don't wait for migrations)
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    
+    // Run migrations in the background (non-blocking)
+    const migrate = require('./database/migrate');
+    migrate()
+      .then(() => {
+        console.log('Migrations completed successfully');
+      })
+      .catch((error) => {
+        console.error('Migration failed (non-critical):', error.message);
+        console.log('Server is running. Migrations can be run manually if needed.');
       });
-    })
-    .catch((error) => {
-      console.error('Migration failed on startup:', error.message);
-      console.log('Server will start anyway. Run migrations manually if needed.');
-      // Start server even if migration fails (migrations might already be applied)
-      app.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
-      });
-    });
+  });
 }
 
 module.exports = app;
