@@ -1,0 +1,21 @@
+{
+  "name": "ai-job-search-app",
+  "version": "1.0.0",
+  "description": "AI-Powered Job Search & Application Platform",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run web\"",
+    "dev:all": "concurrently \"npm run server\" \"npm run web\" \"npm run mobile\"",
+    "server": "cd backend && npm run dev",
+    "web": "cd web && npm run dev",
+    "mobile": "cd mobile && npm start",
+    "install-all": "npm install && cd backend && npm install && cd ../mobile && npm install && cd ../web && npm install"
+  },
+  "keywords": ["job-search", "ai", "mobile-app"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
+
