@@ -9,7 +9,9 @@
     "server": "cd backend && npm run dev",
     "web": "cd web && npm run dev",
     "mobile": "cd mobile && npm start",
-    "install-all": "npm install && cd backend && npm install && cd ../mobile && npm install && cd ../web && npm install"
+    "install-all": "npm install && cd backend && npm install && cd ../mobile && npm install && cd ../web && npm install",
+    "build:web": "cd web && npm install && npm run build",
+    "build:all": "npm run install-all && npm run build:web"
   },
   "keywords": ["job-search", "ai", "mobile-app"],
   "author": "",

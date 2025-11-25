@@ -20,6 +20,18 @@ app.use(express.urlencoded({ extended: true }));
 // Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
+// Serve static files from web build (if exists)
+const webBuildPath = path.join(__dirname, '../../web/dist');
+try {
+  const fs = require('fs');
+  if (fs.existsSync(webBuildPath)) {
+    app.use(express.static(webBuildPath));
+    console.log('Serving web frontend from:', webBuildPath);
+  }
+} catch (error) {
+  console.log('Web frontend not found, serving API only');
+}
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
@@ -28,8 +40,15 @@ app.use('/api/jobs', require('./routes/jobs'));
 app.use('/api/applications', require('./routes/applications'));
 app.use('/api/ai', require('./routes/ai'));
 
-// Root endpoint
+// Root endpoint - serve web app if available, otherwise API info
 app.get('/', (req, res) => {
+  const webIndexPath = path.join(__dirname, '../../web/dist/index.html');
+  const fs = require('fs');
+  if (fs.existsSync(webIndexPath)) {
+    // Serve the web app
+    return res.sendFile(webIndexPath);
+  }
+  // Fallback to API info if web app not built
   res.json({ 
     message: 'AI Job Search API',
     version: '1.0.0',
@@ -54,38 +73,60 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// 404 handler for undefined routes
+// Serve React app for all non-API routes (SPA routing)
+app.get('*', (req, res, next) => {
+  // Skip if it's an API route
+  if (req.path.startsWith('/api')) {
+    return next();
+  }
+  
+  // Try to serve the web app's index.html
+  const webIndexPath = path.join(__dirname, '../../web/dist/index.html');
+  const fs = require('fs');
+  if (fs.existsSync(webIndexPath)) {
+    return res.sendFile(webIndexPath);
+  }
+  
+  // Fallback to 404 if web app not built
+  next();
+});
+
+// 404 handler for undefined API routes
 app.use((req, res) => {
-  res.status(404).json({
-    error: 'Route not found',
-    path: req.path,
-    method: req.method,
-    message: `The endpoint ${req.method} ${req.path} does not exist.`,
-    availableEndpoints: {
-      root: 'GET /',
-      health: 'GET /api/health',
-      auth: {
-        register: 'POST /api/auth/register',
-        login: 'POST /api/auth/login',
-        me: 'GET /api/auth/me'
-      },
-      jobs: {
-        list: 'GET /api/jobs',
-        detail: 'GET /api/jobs/:id',
-        search: 'GET /api/jobs?search=...'
-      },
-      resumes: {
-        upload: 'POST /api/resumes/upload',
-        list: 'GET /api/resumes',
-        master: 'GET /api/resumes/master'
-      },
-      ai: {
-        chat: 'POST /api/ai/chat',
-        coverLetter: 'POST /api/ai/cover-letter',
-        uploadCV: 'POST /api/ai/chat/upload-cv'
+  if (req.path.startsWith('/api')) {
+    res.status(404).json({
+      error: 'Route not found',
+      path: req.path,
+      method: req.method,
+      message: `The endpoint ${req.method} ${req.path} does not exist.`,
+      availableEndpoints: {
+        root: 'GET /',
+        health: 'GET /api/health',
+        auth: {
+          register: 'POST /api/auth/register',
+          login: 'POST /api/auth/login',
+          me: 'GET /api/auth/me'
+        },
+        jobs: {
+          list: 'GET /api/jobs',
+          detail: 'GET /api/jobs/:id',
+          search: 'GET /api/jobs?search=...'
+        },
+        resumes: {
+          upload: 'POST /api/resumes/upload',
+          list: 'GET /api/resumes',
+          master: 'GET /api/resumes/master'
+        },
+        ai: {
+          chat: 'POST /api/ai/chat',
+          coverLetter: 'POST /api/ai/cover-letter',
+          uploadCV: 'POST /api/ai/chat/upload-cv'
+        }
       }
-    }
-  });
+    });
+  } else {
+    res.status(404).send('Page not found. Web frontend may not be built.');
+  }
 });
 
 // Error handling middleware
