@@ -2,8 +2,29 @@ const pool = require('./postgres');
 const fs = require('fs');
 const path = require('path');
 
+// Retry logic for database connection
+async function waitForDatabase(maxRetries = 10, delay = 2000) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      await pool.query('SELECT NOW()');
+      console.log('Database connection established');
+      return true;
+    } catch (error) {
+      console.log(`Waiting for database... (attempt ${i + 1}/${maxRetries})`);
+      if (i < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        throw error;
+      }
+    }
+  }
+}
+
 async function migrate() {
   try {
+    // Wait for database to be ready (important for Railway)
+    await waitForDatabase();
+    
     const schemaPath = path.join(__dirname, 'schema.sql');
     const schema = fs.readFileSync(schemaPath, 'utf8');
     
@@ -13,17 +34,41 @@ async function migrate() {
       .map(stmt => stmt.trim())
       .filter(stmt => stmt.length > 0);
 
+    console.log(`Executing ${statements.length} migration statements...`);
+    
     for (const statement of statements) {
-      await pool.query(statement);
+      if (statement.length > 0) {
+        try {
+          await pool.query(statement);
+        } catch (error) {
+          // Ignore "already exists" errors for tables/constraints
+          if (error.message.includes('already exists') || error.code === '42P07') {
+            console.log('Table/constraint already exists, skipping...');
+          } else {
+            throw error;
+          }
+        }
+      }
     }
     
     console.log('Database migration completed successfully');
-    process.exit(0);
+    if (require.main === module) {
+      process.exit(0);
+    }
   } catch (error) {
     console.error('Migration error:', error);
-    process.exit(1);
+    if (require.main === module) {
+      process.exit(1);
+    } else {
+      throw error;
+    }
   }
 }
 
-migrate();
+// Only run if called directly (not when imported)
+if (require.main === module) {
+  migrate();
+}
+
+module.exports = migrate;
 

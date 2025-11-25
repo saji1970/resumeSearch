@@ -141,12 +141,18 @@ curl -X POST https://your-project.up.railway.app/api/auth/register \
 
 ### Migration Errors
 
-If migrations fail:
-1. Check Railway logs for error messages
-2. Manually run migration:
+If migrations fail during deployment:
+1. The migration script now includes retry logic and will wait for the database to be ready
+2. Migrations also run automatically on server startup as a fallback
+3. Check Railway logs for error messages
+4. If needed, manually run migration:
    ```bash
    railway run npm run migrate
    ```
+5. Common issues:
+   - **ENOTFOUND postgres.railway.internal**: Database not ready yet - migrations will retry automatically
+   - **Already exists errors**: Safe to ignore - tables already created
+   - **Connection timeout**: Check that DATABASE_URL is set correctly in Railway variables
 
 ### API Key Issues
 

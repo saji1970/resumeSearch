@@ -46,9 +46,23 @@ app.use((err, req, res, next) => {
 
 // Only start server if not in test environment and not imported
 if (process.env.NODE_ENV !== 'test' && require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-  });
+  // Run migrations on startup (with error handling)
+  const migrate = require('./database/migrate');
+  migrate()
+    .then(() => {
+      console.log('Migrations completed, starting server...');
+      app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+      });
+    })
+    .catch((error) => {
+      console.error('Migration failed on startup:', error.message);
+      console.log('Server will start anyway. Run migrations manually if needed.');
+      // Start server even if migration fails (migrations might already be applied)
+      app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+      });
+    });
 }
 
 module.exports = app;
