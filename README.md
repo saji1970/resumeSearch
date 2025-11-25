@@ -75,6 +75,23 @@ jobSearchapp/
 └── README.md
 ```
 
+## Deployment
+
+### Railway Deployment
+
+This app is configured for easy deployment on Railway. See [RAILWAY_DEPLOYMENT.md](./RAILWAY_DEPLOYMENT.md) for detailed instructions.
+
+Quick steps:
+1. Connect your GitHub repository to Railway
+2. Add PostgreSQL database service
+3. Configure environment variables
+4. Deploy!
+
+The app will automatically:
+- Run database migrations on deploy
+- Configure CORS for production
+- Use Railway's `DATABASE_URL` for PostgreSQL connection
+
 ## Setup Instructions
 
 ### Prerequisites
