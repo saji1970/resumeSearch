@@ -53,6 +53,19 @@ async function migrate() {
     
     console.log('Database migration completed successfully');
     
+    // Quick fix for file_type column length issue (runs immediately)
+    try {
+      await pool.query('ALTER TABLE resumes ALTER COLUMN file_type TYPE VARCHAR(255)');
+      console.log('✅ Fixed file_type column length (VARCHAR(50) -> VARCHAR(255))');
+    } catch (error) {
+      // Ignore if column is already correct size or doesn't exist
+      if (error.message.includes('already') || error.code === '42710' || error.message.includes('does not exist')) {
+        console.log('⏭️  file_type column is already correct size');
+      } else {
+        console.log('⚠️  Could not fix file_type column (non-critical):', error.message);
+      }
+    }
+    
     // Run additional migration files
     const migrationsDir = path.join(__dirname, 'migrations');
     if (fs.existsSync(migrationsDir)) {
