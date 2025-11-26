@@ -21,20 +21,32 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Serve static files from web build (if exists)
-const webBuildPath = path.join(__dirname, '../../web/dist');
 const fs = require('fs');
-if (fs.existsSync(webBuildPath)) {
-  app.use(express.static(webBuildPath));
-  console.log('✅ Serving web frontend from:', webBuildPath);
-} else {
-  console.log('⚠️  Web frontend not found at:', webBuildPath);
+const webBuildPaths = [
+  path.join(__dirname, '../../web/dist'),  // From backend/src: ../../web/dist
+  path.join(process.cwd(), 'web/dist'),   // From app root: web/dist
+  path.join(process.cwd(), '../web/dist'), // Alternative: ../web/dist
+  '/app/web/dist'                         // Absolute path in Railway
+];
+
+let webBuildPath = null;
+for (const buildPath of webBuildPaths) {
+  if (fs.existsSync(buildPath)) {
+    webBuildPath = buildPath;
+    app.use(express.static(buildPath));
+    console.log('✅ Serving web frontend from:', buildPath);
+    break;
+  }
+}
+
+if (!webBuildPath) {
+  console.log('⚠️  Web frontend not found. Checked paths:');
+  webBuildPaths.forEach(p => console.log('   -', p));
   console.log('   Current working directory:', process.cwd());
   console.log('   __dirname:', __dirname);
-  // Try alternative path (in case of different directory structure)
-  const altPath = path.join(process.cwd(), 'web/dist');
-  if (fs.existsSync(altPath)) {
-    app.use(express.static(altPath));
-    console.log('✅ Serving web frontend from alternative path:', altPath);
+  console.log('   Listing /app directory:', fs.existsSync('/app') ? fs.readdirSync('/app').join(', ') : 'not found');
+  if (fs.existsSync('/app/web')) {
+    console.log('   Listing /app/web:', fs.readdirSync('/app/web').join(', '));
   }
 }
 
@@ -48,13 +60,23 @@ app.use('/api/ai', require('./routes/ai'));
 
 // Root endpoint - serve web app if available, otherwise API info
 app.get('/', (req, res) => {
-  const webIndexPath = path.join(__dirname, '../../web/dist/index.html');
   const fs = require('fs');
-  if (fs.existsSync(webIndexPath)) {
-    // Serve the web app
-    return res.sendFile(webIndexPath);
+  const indexPaths = [
+    path.join(__dirname, '../../web/dist/index.html'),
+    path.join(process.cwd(), 'web/dist/index.html'),
+    path.join(process.cwd(), '../web/dist/index.html'),
+    '/app/web/dist/index.html'
+  ];
+  
+  for (const indexPath of indexPaths) {
+    if (fs.existsSync(indexPath)) {
+      console.log('Serving index.html from:', indexPath);
+      return res.sendFile(path.resolve(indexPath));
+    }
   }
+  
   // Fallback to API info if web app not built
+  console.log('⚠️  index.html not found, serving API info');
   res.json({ 
     message: 'AI Job Search API',
     version: '1.0.0',
@@ -87,10 +109,18 @@ app.get('*', (req, res, next) => {
   }
   
   // Try to serve the web app's index.html
-  const webIndexPath = path.join(__dirname, '../../web/dist/index.html');
   const fs = require('fs');
-  if (fs.existsSync(webIndexPath)) {
-    return res.sendFile(webIndexPath);
+  const indexPaths = [
+    path.join(__dirname, '../../web/dist/index.html'),
+    path.join(process.cwd(), 'web/dist/index.html'),
+    path.join(process.cwd(), '../web/dist/index.html'),
+    '/app/web/dist/index.html'
+  ];
+  
+  for (const indexPath of indexPaths) {
+    if (fs.existsSync(indexPath)) {
+      return res.sendFile(path.resolve(indexPath));
+    }
   }
   
   // Fallback to 404 if web app not built
