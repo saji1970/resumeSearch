@@ -178,6 +178,63 @@ app.use((err, req, res, next) => {
 
 // Only start server if not in test environment and not imported
 if (process.env.NODE_ENV !== 'test' && require.main === module) {
+  // Log detailed information about the environment
+  console.log('=== Server Startup Information ===');
+  console.log('Current working directory:', process.cwd());
+  console.log('__dirname:', __dirname);
+  console.log('NODE_ENV:', process.env.NODE_ENV);
+  
+  // Check for web build one more time with detailed logging
+  const fs = require('fs');
+  console.log('\n=== Checking for web build ===');
+  const checkPaths = [
+    path.join(__dirname, '../../web/dist'),
+    path.join(process.cwd(), 'web/dist'),
+    path.join(process.cwd(), '../web/dist'),
+    '/app/web/dist',
+    path.join(process.cwd(), '../../web/dist')
+  ];
+  
+  checkPaths.forEach(checkPath => {
+    const exists = fs.existsSync(checkPath);
+    console.log(`${exists ? '✅' : '❌'} ${checkPath}`);
+    if (exists) {
+      try {
+        const files = fs.readdirSync(checkPath);
+        console.log(`   Contains ${files.length} files: ${files.slice(0, 5).join(', ')}${files.length > 5 ? '...' : ''}`);
+        if (fs.existsSync(path.join(checkPath, 'index.html'))) {
+          console.log('   ✅ index.html found');
+        } else {
+          console.log('   ❌ index.html NOT found');
+        }
+      } catch (err) {
+        console.log(`   Error reading directory: ${err.message}`);
+      }
+    }
+  });
+  
+  // List /app directory structure
+  if (fs.existsSync('/app')) {
+    console.log('\n=== /app directory structure ===');
+    try {
+      const appContents = fs.readdirSync('/app');
+      console.log('Contents:', appContents.join(', '));
+      
+      if (appContents.includes('web')) {
+        const webContents = fs.readdirSync('/app/web');
+        console.log('/app/web contents:', webContents.join(', '));
+        if (webContents.includes('dist')) {
+          const distContents = fs.readdirSync('/app/web/dist');
+          console.log('/app/web/dist contents:', distContents.join(', '));
+        }
+      }
+    } catch (err) {
+      console.log('Error reading /app:', err.message);
+    }
+  }
+  
+  console.log('=== End Startup Information ===\n');
+  
   // Start server immediately (don't wait for migrations)
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
