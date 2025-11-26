@@ -235,9 +235,30 @@ if (process.env.NODE_ENV !== 'test' && require.main === module) {
   
   console.log('=== End Startup Information ===\n');
   
+  // Check for required environment variables
+  console.log('=== Environment Variables Check ===');
+  const requiredVars = {
+    'JWT_SECRET': process.env.JWT_SECRET,
+    'DATABASE_URL': process.env.DATABASE_URL ? 'Set' : 'Missing',
+  };
+  
+  Object.entries(requiredVars).forEach(([key, value]) => {
+    if (value && value !== 'Missing') {
+      console.log(`✅ ${key}: Configured`);
+    } else {
+      console.error(`❌ ${key}: MISSING - This will cause authentication to fail!`);
+    }
+  });
+  console.log('=== End Environment Check ===\n');
+  
   // Start server immediately (don't wait for migrations)
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    
+    if (!process.env.JWT_SECRET) {
+      console.error('\n⚠️  WARNING: JWT_SECRET is not set!');
+      console.error('   Authentication will fail. Please add JWT_SECRET to Railway environment variables.\n');
+    }
     
     // Run migrations in the background (non-blocking)
     const migrate = require('./database/migrate');
