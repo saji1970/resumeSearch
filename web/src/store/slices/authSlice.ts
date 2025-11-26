@@ -84,11 +84,15 @@ const authSlice = createSlice({
       })
       .addCase(login.rejected, (state, action) => {
         state.loading = false
-        const errorMessage = (action.payload as any)?.error || 
-                            (action.error as any)?.response?.data?.error ||
+        // Extract error message from API response - ensure it's always a string
+        const errorPayload = action.payload as any
+        const errorResponse = (action.error as any)?.response?.data
+        const errorMessage = errorPayload?.error || 
+                            errorResponse?.error ||
+                            errorResponse?.message ||
                             action.error.message || 
                             'Login failed'
-        state.error = errorMessage
+        state.error = String(errorMessage)
       })
       .addCase(register.pending, (state) => {
         state.loading = true
@@ -101,12 +105,15 @@ const authSlice = createSlice({
       })
       .addCase(register.rejected, (state, action) => {
         state.loading = false
-        // Extract error message from API response
-        const errorMessage = (action.payload as any)?.error || 
-                            (action.error as any)?.response?.data?.error ||
+        // Extract error message from API response - ensure it's always a string
+        const errorPayload = action.payload as any
+        const errorResponse = (action.error as any)?.response?.data
+        const errorMessage = errorPayload?.error || 
+                            errorResponse?.error ||
+                            errorResponse?.message ||
                             action.error.message || 
                             'Registration failed'
-        state.error = errorMessage
+        state.error = String(errorMessage)
       })
       .addCase(logout.fulfilled, (state) => {
         state.user = null
