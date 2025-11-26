@@ -2,7 +2,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { AppDispatch, RootState } from '../../store/store'
 import { logout } from '../../store/slices/authSlice'
 import { useNavigate } from 'react-router-dom'
-import { User, Mail, Phone, MapPin, LogOut, Settings } from 'lucide-react'
+import { User, Phone, MapPin, LogOut, Settings } from 'lucide-react'
 
 export default function ProfilePage() {
   const dispatch = useDispatch<AppDispatch>()

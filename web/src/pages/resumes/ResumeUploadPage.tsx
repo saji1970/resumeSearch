@@ -1,13 +1,12 @@
 import { useState, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
 import { AppDispatch, RootState } from '../../store/store'
 import { uploadResume, fetchMasterResume } from '../../store/slices/resumeSlice'
 import { Upload, FileText, CheckCircle } from 'lucide-react'
 
 export default function ResumeUploadPage() {
   const dispatch = useDispatch<AppDispatch>()
-  const navigate = useNavigate()
+  // const navigate = useNavigate() // Not currently used
   const { masterResume, loading } = useSelector((state: RootState) => state.resume)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [dragActive, setDragActive] = useState(false)

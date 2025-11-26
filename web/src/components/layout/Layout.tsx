@@ -1,6 +1,6 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
-import { useDispatch, useSelector } from 'react-redux'
-import { AppDispatch, RootState } from '../../store/store'
+import { useDispatch } from 'react-redux'
+import { AppDispatch } from '../../store/store'
 import { logout } from '../../store/slices/authSlice'
 import { 
   LayoutDashboard, 
@@ -18,7 +18,7 @@ export default function Layout() {
   const location = useLocation()
   const navigate = useNavigate()
   const dispatch = useDispatch<AppDispatch>()
-  const { user } = useSelector((state: RootState) => state.auth)
+  // const { user } = useSelector((state: RootState) => state.auth) // Not currently used
 
   const handleLogout = () => {
     dispatch(logout())

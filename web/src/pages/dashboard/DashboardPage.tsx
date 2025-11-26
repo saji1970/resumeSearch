@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { AppDispatch, RootState } from '../../store/store'
 import { fetchJobs } from '../../store/slices/jobSlice'
 import { fetchApplications } from '../../store/slices/applicationSlice'
-import { Briefcase, TrendingUp, FileText, CheckCircle } from 'lucide-react'
+import { Briefcase, TrendingUp, CheckCircle } from 'lucide-react'
 
 export default function DashboardPage() {
   const dispatch = useDispatch<AppDispatch>()

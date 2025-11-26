@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Settings, Key, CheckCircle, AlertCircle, Info, Copy } from 'lucide-react'
+import { Settings, Key, CheckCircle, Info, Copy } from 'lucide-react'
 
 export default function SettingsPage() {
   const [copied, setCopied] = useState<string | null>(null)

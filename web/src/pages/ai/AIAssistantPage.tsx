@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { aiAPI } from '../../services/api/aiAPI'
-import { Send, Bot, User, Upload, FileText, Briefcase, X } from 'lucide-react'
+import { Send, Bot, User, Upload, FileText } from 'lucide-react'
 
 interface Message {
   id: string
@@ -8,6 +8,7 @@ interface Message {
   content: string
   jobs?: any[]
   cvData?: any
+  questions?: string[]
   type?: 'text' | 'cv_upload' | 'jobs'
 }
 

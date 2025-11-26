@@ -48,7 +48,7 @@ export const logout = createAsyncThunk('auth/logout', async () => {
 export const loadUser = createAsyncThunk('auth/loadUser', async () => {
   const token = localStorage.getItem('token')
   if (token) {
-    const user = await authAPI.getCurrentUser(token)
+    const user = await authAPI.getCurrentUser()
     return { user, token }
   }
   return null

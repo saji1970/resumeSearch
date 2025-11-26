@@ -17,7 +17,7 @@ export const authAPI = {
     return response.data
   },
 
-  getCurrentUser: async (token: string) => {
+  getCurrentUser: async () => {
     const response = await apiClient.get('/auth/me')
     return response.data
   },

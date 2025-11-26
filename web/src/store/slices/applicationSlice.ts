@@ -8,6 +8,7 @@ interface Application {
   application_date: string
   title?: string
   company?: string
+  cover_letter?: string
 }
 
 interface ApplicationState {
