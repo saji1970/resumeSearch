@@ -70,9 +70,13 @@ async function migrate() {
           await pool.query(migrationSQL);
           console.log(`✅ Applied migration: ${file}`);
         } catch (error) {
-          // Ignore errors about column already being correct type
-          if (error.message.includes('already') || error.message.includes('does not exist')) {
-            console.log(`⏭️  Skipped migration ${file} (already applied or not needed)`);
+          // Ignore errors about column already being correct type or already exists
+          if (error.message.includes('already') || 
+              error.message.includes('does not exist') ||
+              error.code === '42P07' || // duplicate_table
+              error.code === '42710' || // duplicate_object
+              error.message.includes('column') && error.message.includes('already')) {
+            console.log(`⏭️  Skipped migration ${file} (already applied or not needed): ${error.message}`);
           } else {
             console.error(`❌ Error applying migration ${file}:`, error.message);
             // Don't throw - continue with other migrations
