@@ -55,8 +55,8 @@ router.post('/register', async (req, res, next) => {
     } catch (tokenError) {
       console.error('Token generation error:', tokenError.message);
       return res.status(500).json({ 
-        error: 'Server configuration error',
-        message: 'Unable to generate authentication token. Please contact the administrator.'
+        error: 'JWT_SECRET is not configured',
+        message: 'The server is missing the JWT_SECRET environment variable. Please add it in Railway Dashboard → Variables → New Variable: Key=JWT_SECRET, Value=(a long random string)'
       });
     }
 
@@ -108,8 +108,8 @@ router.post('/login', async (req, res, next) => {
     } catch (tokenError) {
       console.error('Token generation error:', tokenError.message);
       return res.status(500).json({ 
-        error: 'Server configuration error',
-        message: 'Unable to generate authentication token. Please contact the administrator.'
+        error: 'JWT_SECRET is not configured',
+        message: 'The server is missing the JWT_SECRET environment variable. Please add it in Railway Dashboard → Variables → New Variable: Key=JWT_SECRET, Value=(a long random string)'
       });
     }
 

@@ -58,7 +58,8 @@ export default function LoginPage() {
 
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-              {typeof error === 'string' ? error : (error as any)?.message || 'An error occurred'}
+              <div className="font-semibold mb-1">Login Failed</div>
+              <div>{typeof error === 'string' ? error : (error as any)?.message || 'An error occurred'}</div>
             </div>
           )}
 
