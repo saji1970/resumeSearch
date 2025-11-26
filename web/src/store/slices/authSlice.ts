@@ -25,19 +25,28 @@ const initialState: AuthState = {
 
 export const login = createAsyncThunk(
   'auth/login',
-  async ({ email, password }: { email: string; password: string }) => {
-    const response = await authAPI.login(email, password)
-    localStorage.setItem('token', response.token)
-    return response
+  async ({ email, password }: { email: string; password: string }, { rejectWithValue }) => {
+    try {
+      const response = await authAPI.login(email, password)
+      localStorage.setItem('token', response.token)
+      return response
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data || { error: error.message || 'Login failed' })
+    }
   }
 )
 
 export const register = createAsyncThunk(
   'auth/register',
-  async (userData: { email: string; password: string; name?: string }) => {
-    const response = await authAPI.register(userData)
-    localStorage.setItem('token', response.token)
-    return response
+  async (userData: { email: string; password: string; name?: string }, { rejectWithValue }) => {
+    try {
+      const response = await authAPI.register(userData)
+      localStorage.setItem('token', response.token)
+      return response
+    } catch (error: any) {
+      // Return error payload so it can be accessed in rejected case
+      return rejectWithValue(error.response?.data || { error: error.message || 'Registration failed' })
+    }
   }
 )
 
@@ -75,7 +84,11 @@ const authSlice = createSlice({
       })
       .addCase(login.rejected, (state, action) => {
         state.loading = false
-        state.error = action.error.message || 'Login failed'
+        const errorMessage = (action.payload as any)?.error || 
+                            (action.error as any)?.response?.data?.error ||
+                            action.error.message || 
+                            'Login failed'
+        state.error = errorMessage
       })
       .addCase(register.pending, (state) => {
         state.loading = true
@@ -88,7 +101,12 @@ const authSlice = createSlice({
       })
       .addCase(register.rejected, (state, action) => {
         state.loading = false
-        state.error = action.error.message || 'Registration failed'
+        // Extract error message from API response
+        const errorMessage = (action.payload as any)?.error || 
+                            (action.error as any)?.response?.data?.error ||
+                            action.error.message || 
+                            'Registration failed'
+        state.error = errorMessage
       })
       .addCase(logout.fulfilled, (state) => {
         state.user = null
