@@ -6,6 +6,16 @@ const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Helper function to generate JWT token
+function generateToken(userId) {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET is not configured. Please set it in Railway environment variables.');
+  }
+  return jwt.sign({ userId }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRES_IN || '7d'
+  });
+}
+
 // Register
 router.post('/register', async (req, res, next) => {
   try {
@@ -39,9 +49,7 @@ router.post('/register', async (req, res, next) => {
     );
 
     // Generate token
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, {
-      expiresIn: process.env.JWT_EXPIRES_IN || '7d'
-    });
+    const token = generateToken(user.id);
 
     res.status(201).json({
       message: 'User created successfully',
@@ -85,9 +93,7 @@ router.post('/login', async (req, res, next) => {
     }
 
     // Generate token
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, {
-      expiresIn: process.env.JWT_EXPIRES_IN || '7d'
-    });
+    const token = generateToken(user.id);
 
     res.json({
       message: 'Login successful',
