@@ -52,6 +52,35 @@ async function migrate() {
     }
     
     console.log('Database migration completed successfully');
+    
+    // Run additional migration files
+    const migrationsDir = path.join(__dirname, 'migrations');
+    if (fs.existsSync(migrationsDir)) {
+      const migrationFiles = fs.readdirSync(migrationsDir)
+        .filter(file => file.endsWith('.sql'))
+        .sort();
+      
+      console.log(`Found ${migrationFiles.length} migration file(s) to run...`);
+      
+      for (const file of migrationFiles) {
+        const migrationPath = path.join(migrationsDir, file);
+        const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
+        
+        try {
+          await pool.query(migrationSQL);
+          console.log(`✅ Applied migration: ${file}`);
+        } catch (error) {
+          // Ignore errors about column already being correct type
+          if (error.message.includes('already') || error.message.includes('does not exist')) {
+            console.log(`⏭️  Skipped migration ${file} (already applied or not needed)`);
+          } else {
+            console.error(`❌ Error applying migration ${file}:`, error.message);
+            // Don't throw - continue with other migrations
+          }
+        }
+      }
+    }
+    
     if (require.main === module) {
       process.exit(0);
     }

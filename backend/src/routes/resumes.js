@@ -110,6 +110,9 @@ router.post('/upload', authenticate, upload.single('resume'), async (req, res, n
     }
 
     // Save resume record
+    // Truncate mimetype to 255 chars to prevent database errors (safety measure)
+    const fileType = req.file.mimetype ? req.file.mimetype.substring(0, 255) : null;
+    
     const result = await pool.query(
       `INSERT INTO resumes (user_id, file_name, file_path, file_type, parsed_data, is_master)
        VALUES ($1, $2, $3, $4, $5, $6)
@@ -118,7 +121,7 @@ router.post('/upload', authenticate, upload.single('resume'), async (req, res, n
         req.user.id,
         req.file.originalname,
         req.file.path,
-        req.file.mimetype,
+        fileType,
         JSON.stringify(parsedData),
         isMaster
       ]
