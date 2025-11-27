@@ -399,8 +399,10 @@ router.post('/chat', authenticate, async (req, res, next) => {
 
     // Get user context including CV data from ANY uploaded resume (not just master)
     // This ensures CVs uploaded from Resume, Profile, or AI Assistant are all accessible
+    // Also fetch suggested_job_roles from user profile metadata
     const userResult = await pool.query(
-      `SELECT u.name, u.email, up.professional_summary, up.skills, up.career_goals,
+      `SELECT u.name, u.email, 
+              up.professional_summary, up.skills, up.career_goals, up.suggested_job_roles,
               r.parsed_data as cv_data, r.file_name, r.created_at as cv_uploaded_at
        FROM users u
        LEFT JOIN user_profiles up ON u.id = up.user_id
@@ -414,19 +416,44 @@ router.post('/chat', authenticate, async (req, res, next) => {
     const user = userResult.rows[0] || {};
     let cvData = user.cv_data ? (typeof user.cv_data === 'string' ? JSON.parse(user.cv_data) : user.cv_data) : null;
     
-    // If no CV data in resume, check user profile for skills
-    if (!cvData || !cvData.skills || Object.keys(cvData.skills).length === 0) {
-      if (user.skills && typeof user.skills === 'string') {
-        try {
-          const profileSkills = JSON.parse(user.skills);
-          if (profileSkills && Object.keys(profileSkills).length > 0) {
-            cvData = cvData || {};
-            cvData.skills = profileSkills;
-          }
-        } catch (e) {
-          // Ignore parse errors
-        }
+    // Parse user profile metadata
+    let profileSkills = null;
+    let suggestedRoles = [];
+    
+    if (user.skills) {
+      try {
+        profileSkills = typeof user.skills === 'string' ? JSON.parse(user.skills) : user.skills;
+      } catch (e) {
+        // Ignore parse errors
       }
+    }
+    
+    if (user.suggested_job_roles) {
+      try {
+        suggestedRoles = typeof user.suggested_job_roles === 'string' 
+          ? JSON.parse(user.suggested_job_roles) 
+          : user.suggested_job_roles;
+        if (!Array.isArray(suggestedRoles)) {
+          suggestedRoles = [];
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+    
+    // Merge CV data with profile metadata - profile data takes precedence as it's more recent
+    if (!cvData) {
+      cvData = {};
+    }
+    
+    // Use profile skills if available (they're from the most recent CV analysis)
+    if (profileSkills && Object.keys(profileSkills).length > 0) {
+      cvData.skills = profileSkills;
+    }
+    
+    // Add suggested roles to CV data for context
+    if (suggestedRoles.length > 0) {
+      cvData.suggested_job_roles = suggestedRoles;
     }
 
     // Check if user wants to search for jobs or provided job requirements
@@ -551,34 +578,72 @@ router.post('/chat', authenticate, async (req, res, next) => {
       }
     }
 
-    // Build context-aware prompt
-    let systemPrompt = `You are an AI career assistant helping job seekers. You understand their CV, ask relevant questions about their job requirements, and help them find suitable positions.
+    // Build comprehensive context-aware prompt with all CV metadata
+    let systemPrompt = `You are an AI career assistant helping job seekers. You have access to their complete CV/resume metadata and should use this information throughout the entire conversation to provide personalized, context-aware responses.
 
-User Profile:
-- Name: ${user.name || 'User'}
-- Professional Summary: ${user.professional_summary || 'Not provided'}
-- Skills: ${JSON.stringify(user.skills || {})}
-- Career Goals: ${user.career_goals || 'Not specified'}`;
+=== USER PROFILE & CV METADATA ===
+Name: ${user.name || 'User'}
+Professional Summary: ${user.professional_summary || 'Not provided'}
+Career Goals: ${user.career_goals || 'Not specified'}`;
 
-    if (cvData) {
-      systemPrompt += `\n\nCV Information:
-- Experience: ${JSON.stringify(cvData.experience || [])}
-- Education: ${JSON.stringify(cvData.education || [])}
-- Skills: ${JSON.stringify(cvData.skills || {})}`;
+    // Include comprehensive CV data if available
+    if (cvData && (cvData.skills || cvData.experience || cvData.education || cvData.suggested_job_roles)) {
+      systemPrompt += `\n\n=== CV/RESUME ANALYSIS ===`;
+      
+      if (cvData.skills && Object.keys(cvData.skills).length > 0) {
+        const allSkills = [];
+        if (cvData.skills.technical) allSkills.push(...(Array.isArray(cvData.skills.technical) ? cvData.skills.technical : []));
+        if (cvData.skills.soft) allSkills.push(...(Array.isArray(cvData.skills.soft) ? cvData.skills.soft : []));
+        if (cvData.skills.languages) allSkills.push(...(Array.isArray(cvData.skills.languages) ? cvData.skills.languages : []));
+        
+        systemPrompt += `\n\nSKILLS (Use these throughout the conversation):
+${allSkills.length > 0 ? allSkills.map(s => `- ${s}`).join('\n') : 'Not specified'}`;
+        
+        if (cvData.skills.technical && Array.isArray(cvData.skills.technical) && cvData.skills.technical.length > 0) {
+          systemPrompt += `\n\nTechnical Skills: ${cvData.skills.technical.join(', ')}`;
+        }
+        if (cvData.skills.soft && Array.isArray(cvData.skills.soft) && cvData.skills.soft.length > 0) {
+          systemPrompt += `\nSoft Skills: ${cvData.skills.soft.join(', ')}`;
+        }
+      }
+      
+      if (cvData.experience && Array.isArray(cvData.experience) && cvData.experience.length > 0) {
+        systemPrompt += `\n\nEXPERIENCE (Reference this when discussing career):
+${cvData.experience.slice(0, 5).map(exp => 
+  `- ${exp.title || 'Position'} at ${exp.company || 'Company'}${exp.description ? `: ${exp.description.substring(0, 100)}` : ''}`
+).join('\n')}`;
+      }
+      
+      if (cvData.education && Array.isArray(cvData.education) && cvData.education.length > 0) {
+        systemPrompt += `\n\nEDUCATION:
+${cvData.education.map(edu => 
+  `- ${edu.degree || 'Degree'} from ${edu.institution || 'Institution'}`
+).join('\n')}`;
+      }
+      
+      if (cvData.suggested_job_roles && Array.isArray(cvData.suggested_job_roles) && cvData.suggested_job_roles.length > 0) {
+        systemPrompt += `\n\nSUGGESTED JOB ROLES (Based on CV analysis - reference these when discussing jobs):
+${cvData.suggested_job_roles.map(role => `- ${role}`).join('\n')}`;
+      }
+    } else {
+      systemPrompt += `\n\nCV Status: No CV has been uploaded yet. Ask the user to upload their CV for personalized assistance.`;
     }
 
-    systemPrompt += `\n\nYour role:
-1. Understand and analyze the user's CV/resume when they ask about it
-2. When asked to "read my resume" or "understand my CV", analyze their skills, experience, and education
-3. Suggest job profiles and roles they can apply for based on their CV
-4. Ask relevant questions to understand job requirements (location, salary, remote work, etc.)
-5. Help users understand their skills and experience
-6. Provide career advice based on their background
-7. When they ask about jobs, help them search and understand job requirements
-8. Be conversational, friendly, and helpful
-9. Use NLP to understand natural language queries about their resume
+    systemPrompt += `\n\n=== YOUR ROLE & INSTRUCTIONS ===
+You MUST use the CV metadata above in EVERY response. This is critical for providing personalized assistance.
 
-Important: If the user asks you to read/understand their resume or suggest jobs they can apply for, analyze their CV data and provide specific job recommendations based on their skills and experience.`;
+1. ALWAYS reference the user's skills, experience, and suggested roles when relevant
+2. When discussing jobs, match them to the user's background and suggested roles
+3. When asked about their resume/CV, use the metadata to provide specific insights
+4. When suggesting jobs, prioritize roles from the "SUGGESTED JOB ROLES" list
+5. When discussing skills, reference their actual skills from the CV
+6. When providing career advice, base it on their experience and education
+7. Ask relevant questions to understand job requirements (location, salary, remote work, etc.)
+8. Be conversational, friendly, and helpful
+9. Use NLP to understand natural language queries
+10. If the user asks about jobs without specifying details, use their suggested roles and skills to guide the search
+
+CRITICAL: The CV metadata above is your source of truth. Use it actively in every conversation to provide personalized, relevant responses. Don't just acknowledge it exists - actively reference specific skills, roles, and experience when relevant.`;
 
     // Detect if user wants CV analysis or job recommendations
     const cvAnalysisKeywords = [
@@ -592,28 +657,32 @@ Important: If the user asks you to read/understand their resume or suggest jobs 
       message.toLowerCase().includes(keyword)
     );
     
-    // If user wants CV analysis, enhance the prompt
+    // If user wants CV analysis, enhance the prompt with stored metadata
     if (wantsCVAnalysis) {
-      if (cvData && (cvData.skills || cvData.experience || cvData.education)) {
-        // User has CV data - provide detailed analysis
-        systemPrompt += `\n\nUSER REQUEST: The user wants you to analyze their CV and suggest job profiles they can apply for.
+      if (cvData && (cvData.skills || cvData.experience || cvData.education || cvData.suggested_job_roles)) {
+        // User has CV data - provide detailed analysis using stored metadata
+        const rolesToSuggest = cvData.suggested_job_roles && cvData.suggested_job_roles.length > 0
+          ? cvData.suggested_job_roles
+          : [];
+        
+        systemPrompt += `\n\n=== USER REQUEST: CV Analysis & Job Recommendations ===
+The user wants you to analyze their CV and suggest job profiles they can apply for.
 
-CV Analysis Required:
-- Extract key skills: ${JSON.stringify(cvData.skills || {})}
-- Review experience: ${JSON.stringify(cvData.experience || [])}
-- Consider education: ${JSON.stringify(cvData.education || [])}
-- Professional summary: ${cvData.professional_summary || user.professional_summary || 'Not provided'}
-- Identify career level and expertise areas
+IMPORTANT: You already have their CV metadata above. Use it to provide specific recommendations.
 
 Your Response Should:
-1. Acknowledge that you've analyzed their CV
-2. Highlight their key skills and experience areas
-3. Suggest 5-10 specific job titles/roles they're qualified for based on their background
-4. Explain why each role is a good fit for their skills and experience
-5. Optionally search for actual job openings matching these profiles`;
+1. Acknowledge that you've analyzed their CV (reference specific skills and experience)
+2. Highlight their key skills from the CV metadata above
+3. ${rolesToSuggest.length > 0 
+  ? `Use the SUGGESTED JOB ROLES from their CV analysis: ${rolesToSuggest.join(', ')}. Explain why each role is a good fit based on their skills and experience.`
+  : 'Suggest 5-10 specific job titles/roles they\'re qualified for based on their background (use their skills and experience to determine these)'}
+4. For each suggested role, explain why it matches their skills and experience
+5. Optionally search for actual job openings matching these profiles
+6. Be specific - reference actual skills and experience from their CV, don't be generic`;
       } else {
         // User doesn't have CV uploaded yet
-        systemPrompt += `\n\nUSER REQUEST: The user wants you to analyze their CV and suggest job profiles, but they haven't uploaded a CV yet.
+        systemPrompt += `\n\n=== USER REQUEST: CV Analysis Requested ===
+The user wants you to analyze their CV and suggest job profiles, but they haven't uploaded a CV yet.
 
 Your Response Should:
 1. Politely inform them that you don't see a CV uploaded yet
