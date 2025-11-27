@@ -195,6 +195,64 @@ router.patch('/:id/status', authenticate, async (req, res, next) => {
   }
 });
 
+// Update application outcome (for learning system)
+router.patch('/:id/outcome', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { outcome, outcome_notes, interview_feedback, rejection_reason } = req.body;
+
+    if (!outcome) {
+      return res.status(400).json({ error: 'Outcome is required' });
+    }
+
+    const validOutcomes = ['positive', 'negative', 'pending'];
+    if (!validOutcomes.includes(outcome)) {
+      return res.status(400).json({ error: 'Invalid outcome. Must be: positive, negative, or pending' });
+    }
+
+    // Verify ownership
+    const checkResult = await pool.query(
+      'SELECT id FROM applications WHERE id = $1 AND user_id = $2',
+      [id, req.user.id]
+    );
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+
+    // Update outcome
+    await pool.query(
+      `UPDATE applications 
+       SET outcome = $1, outcome_notes = $2, outcome_date = CURRENT_TIMESTAMP,
+           interview_feedback = $3, rejection_reason = $4, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $5`,
+      [outcome, outcome_notes || null, interview_feedback || null, rejection_reason || null, id]
+    );
+
+    // Trigger learning analysis if outcome is positive or negative
+    if (outcome === 'positive' || outcome === 'negative') {
+      const { analyzeApplicationOutcomes, applyRefinements } = require('../services/applicationLearning');
+      try {
+        const analysis = await analyzeApplicationOutcomes(req.user.id);
+        if (analysis.learned && analysis.analysis) {
+          // Apply refinements to profile
+          await applyRefinements(req.user.id, analysis.analysis);
+        }
+      } catch (learningError) {
+        console.error('Error in learning system:', learningError);
+        // Don't fail the request if learning fails
+      }
+    }
+
+    res.json({ 
+      message: 'Application outcome updated successfully',
+      learningTriggered: (outcome === 'positive' || outcome === 'negative')
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Delete application
 router.delete('/:id', authenticate, async (req, res, next) => {
   try {

@@ -399,10 +399,11 @@ router.post('/chat', authenticate, async (req, res, next) => {
 
     // Get user context including CV data from ANY uploaded resume (not just master)
     // This ensures CVs uploaded from Resume, Profile, or AI Assistant are all accessible
-    // Also fetch suggested_job_roles from user profile metadata
+    // Also fetch suggested_job_roles, job_search_criteria, and extracted_metadata from user profile
     const userResult = await pool.query(
       `SELECT u.name, u.email, 
               up.professional_summary, up.skills, up.career_goals, up.suggested_job_roles,
+              up.job_search_criteria, up.extracted_metadata, up.linkedin_url, up.other_websites,
               r.parsed_data as cv_data, r.file_name, r.created_at as cv_uploaded_at
        FROM users u
        LEFT JOIN user_profiles up ON u.id = up.user_id
@@ -419,6 +420,8 @@ router.post('/chat', authenticate, async (req, res, next) => {
     // Parse user profile metadata
     let profileSkills = null;
     let suggestedRoles = [];
+    let jobSearchCriteria = {};
+    let extractedMetadata = {};
     
     if (user.skills) {
       try {
@@ -441,6 +444,32 @@ router.post('/chat', authenticate, async (req, res, next) => {
       }
     }
     
+    if (user.job_search_criteria) {
+      try {
+        jobSearchCriteria = typeof user.job_search_criteria === 'string' 
+          ? JSON.parse(user.job_search_criteria) 
+          : user.job_search_criteria;
+        if (!jobSearchCriteria || typeof jobSearchCriteria !== 'object') {
+          jobSearchCriteria = {};
+        }
+      } catch (e) {
+        jobSearchCriteria = {};
+      }
+    }
+    
+    if (user.extracted_metadata) {
+      try {
+        extractedMetadata = typeof user.extracted_metadata === 'string'
+          ? JSON.parse(user.extracted_metadata)
+          : user.extracted_metadata;
+        if (!extractedMetadata || typeof extractedMetadata !== 'object') {
+          extractedMetadata = {};
+        }
+      } catch (e) {
+        extractedMetadata = {};
+      }
+    }
+    
     // Merge CV data with profile metadata - profile data takes precedence as it's more recent
     if (!cvData) {
       cvData = {};
@@ -455,30 +484,93 @@ router.post('/chat', authenticate, async (req, res, next) => {
     if (suggestedRoles.length > 0) {
       cvData.suggested_job_roles = suggestedRoles;
     }
-
-    // Check if user wants to search for jobs or provided job requirements
-    const jobSearchKeywords = ['find jobs', 'search jobs', 'job search', 'looking for', 'need a job', 'find me', 'show me jobs', 'search for'];
     
-    // Detect job requirements in the message (job title, location, salary mentioned)
+    // Check if job search criteria needs to be collected
+    const needsJobCriteria = !jobSearchCriteria || 
+                            Object.keys(jobSearchCriteria).length === 0 ||
+                            !jobSearchCriteria.job_titles || 
+                            !jobSearchCriteria.preferred_locations ||
+                            !jobSearchCriteria.salary_expectations;
+    
+    // Check if user wants to search for jobs or provided job requirements (needed for criteria extraction)
+    const jobSearchKeywords = ['find jobs', 'search jobs', 'job search', 'looking for', 'need a job', 'find me', 'show me jobs', 'search for'];
     const hasJobTitle = /\b(senior|sr|jr|junior|lead|principal|manager|director|engineer|developer|analyst|designer|product|marketing|sales|accountant|nurse|teacher|doctor|lawyer)\b/i.test(message);
     const hasLocation = /\b(in|at|near|around)\s+[A-Z][a-z]+(\s+[A-Z]{2})?/i.test(message) || 
-                       /\b([A-Z][a-z]+\s+[A-Z]{2})\b/.test(message) || // Matches "Atlanta GA"
+                       /\b([A-Z][a-z]+\s+[A-Z]{2})\b/.test(message) ||
                        /\b(remote|hybrid|onsite|on-site)\b/i.test(message);
     const hasSalary = /\b(above|over|at least|minimum|need|want|expect|salary|pay|compensation)\s*\$?\d+/i.test(message) || 
                      /\$\d+/i.test(message) ||
-                     /\b\d{5,}\b/.test(message); // Matches numbers like 150000
+                     /\b\d{5,}\b/.test(message);
     const hasJobType = /\b(product management|software engineer|developer|manager|analyst|designer|marketing|sales)\b/i.test(message);
-    
-    // More lenient detection - if message contains job-related terms and location/salary, trigger search
     const hasJobInfo = hasJobTitle || hasJobType || /\b(product|management|engineer|developer|manager|director|analyst)\b/i.test(message);
     const hasLocationOrSalary = hasLocation || hasSalary;
+    const mightWantJobs = searchJobs || 
+                         jobSearchKeywords.some(keyword => message.toLowerCase().includes(keyword)) ||
+                         (hasJobInfo && hasLocationOrSalary) ||
+                         (hasJobTitle && message.length > 15) ||
+                         (hasJobType && (hasLocation || hasSalary)) ||
+                         message.toLowerCase().includes('job');
     
-    // Determine if we should search for jobs
-    const shouldSearchJobs = searchJobs || 
-                             jobSearchKeywords.some(keyword => message.toLowerCase().includes(keyword)) ||
-                             (hasJobInfo && hasLocationOrSalary) ||
-                             (hasJobTitle && message.length > 15) ||
-                             (hasJobType && (hasLocation || hasSalary));
+    // Use NLP to extract job search criteria from the conversation
+    const openai = getOpenAIClient();
+    let extractedCriteria = null;
+    if (openai && (needsJobCriteria || mightWantJobs)) {
+      try {
+        const criteriaExtractionPrompt = `Extract job search criteria from this user message. Return a JSON object with:
+- job_titles: array of job titles/roles mentioned (e.g., ["Senior Product Manager", "Software Engineer"])
+- preferred_locations: array of locations mentioned (e.g., ["Atlanta, GA", "Remote"])
+- salary_expectations: object with min and max (e.g., {"min": 150000, "max": 200000, "currency": "USD"})
+- remote_preference: "remote", "hybrid", "onsite", or null
+- job_types: array of job types (e.g., ["full-time", "contract"])
+- industries: array of industries if mentioned
+- other_preferences: any other preferences mentioned
+
+User message: "${message}"
+
+If no criteria is mentioned, return an empty object {}. Return only valid JSON, no markdown.`;
+
+        const criteriaResponse = await openai.chat.completions.create({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            {
+              role: 'system',
+              content: 'Extract job search criteria from user messages. Return only valid JSON.'
+            },
+            {
+              role: 'user',
+              content: criteriaExtractionPrompt
+            }
+          ],
+          temperature: 0.3,
+          max_tokens: 500
+        });
+
+        const extracted = JSON.parse(criteriaResponse.choices[0].message.content);
+        if (extracted && Object.keys(extracted).length > 0) {
+          extractedCriteria = extracted;
+          // Merge with existing criteria
+          jobSearchCriteria = {
+            ...jobSearchCriteria,
+            ...extractedCriteria,
+            job_titles: [...(jobSearchCriteria.job_titles || []), ...(extractedCriteria.job_titles || [])].filter((v, i, a) => a.indexOf(v) === i),
+            preferred_locations: [...(jobSearchCriteria.preferred_locations || []), ...(extractedCriteria.preferred_locations || [])].filter((v, i, a) => a.indexOf(v) === i)
+          };
+          
+          // Save updated criteria to profile
+          await pool.query(
+            `UPDATE user_profiles 
+             SET job_search_criteria = $1, updated_at = CURRENT_TIMESTAMP
+             WHERE user_id = $2`,
+            [JSON.stringify(jobSearchCriteria), req.user.id]
+          );
+        }
+      } catch (extractError) {
+        console.error('Error extracting job criteria:', extractError);
+      }
+    }
+
+    // Determine if we should search for jobs (using variables already defined above)
+    const shouldSearchJobs = mightWantJobs;
 
     let jobResults = null;
     let searchQuery = '';
@@ -562,14 +654,29 @@ router.post('/chat', authenticate, async (req, res, next) => {
         shouldSearchJobs 
       });
       
+      // Use job search criteria if available
+      if (jobSearchCriteria && jobSearchCriteria.job_titles && jobSearchCriteria.job_titles.length > 0 && !searchQuery) {
+        searchQuery = jobSearchCriteria.job_titles[0];
+      }
+      if (jobSearchCriteria && jobSearchCriteria.preferred_locations && jobSearchCriteria.preferred_locations.length > 0 && !searchLocation) {
+        searchLocation = jobSearchCriteria.preferred_locations[0];
+      }
+      
       // Clean up the query
       searchQuery = searchQuery.trim();
       if (!searchQuery) {
-        searchQuery = cvData?.experience?.[0]?.title || 'software engineer';
+        searchQuery = cvData?.experience?.[0]?.title || 
+                     (jobSearchCriteria?.job_titles?.[0]) || 
+                     (cvData?.suggested_job_roles?.[0]) ||
+                     'software engineer';
       }
       
       try {
-        const webResults = await searchWebJobs(searchQuery, searchLocation, { limit: 5 });
+        const webResults = await searchWebJobs(searchQuery, searchLocation, { 
+          limit: 5,
+          salary_min: jobSearchCriteria?.salary_expectations?.min,
+          remote: jobSearchCriteria?.remote_preference === 'remote' || jobSearchCriteria?.remote_preference === 'hybrid'
+        });
         if (webResults.jobs && webResults.jobs.length > 0) {
           jobResults = webResults.jobs;
         }
@@ -621,29 +728,66 @@ ${cvData.education.map(edu =>
 ).join('\n')}`;
       }
       
-      if (cvData.suggested_job_roles && Array.isArray(cvData.suggested_job_roles) && cvData.suggested_job_roles.length > 0) {
-        systemPrompt += `\n\nSUGGESTED JOB ROLES (Based on CV analysis - reference these when discussing jobs):
-${cvData.suggested_job_roles.map(role => `- ${role}`).join('\n')}`;
-      }
-    } else {
-      systemPrompt += `\n\nCV Status: No CV has been uploaded yet. Ask the user to upload their CV for personalized assistance.`;
-    }
+       if (cvData.suggested_job_roles && Array.isArray(cvData.suggested_job_roles) && cvData.suggested_job_roles.length > 0) {
+         systemPrompt += `\n\nSUGGESTED JOB ROLES (Based on CV analysis - reference these when discussing jobs):
+ ${cvData.suggested_job_roles.map(role => `- ${role}`).join('\n')}`;
+       }
+     } else {
+       systemPrompt += `\n\nCV Status: No CV has been uploaded yet. Ask the user to upload their CV for personalized assistance.`;
+     }
+     
+     // Add job search criteria if available
+     if (jobSearchCriteria && Object.keys(jobSearchCriteria).length > 0) {
+       systemPrompt += `\n\n=== JOB SEARCH CRITERIA (Use these when searching for jobs) ===`;
+       if (jobSearchCriteria.job_titles && jobSearchCriteria.job_titles.length > 0) {
+         systemPrompt += `\nPreferred Job Titles: ${jobSearchCriteria.job_titles.join(', ')}`;
+       }
+       if (jobSearchCriteria.preferred_locations && jobSearchCriteria.preferred_locations.length > 0) {
+         systemPrompt += `\nPreferred Locations: ${jobSearchCriteria.preferred_locations.join(', ')}`;
+       }
+       if (jobSearchCriteria.salary_expectations) {
+         const sal = jobSearchCriteria.salary_expectations;
+         systemPrompt += `\nSalary Expectations: ${sal.min ? `$${sal.min}` : ''}${sal.max ? ` - $${sal.max}` : ''}${sal.currency || 'USD'}`;
+       }
+       if (jobSearchCriteria.remote_preference) {
+         systemPrompt += `\nRemote Preference: ${jobSearchCriteria.remote_preference}`;
+       }
+       if (jobSearchCriteria.industries && jobSearchCriteria.industries.length > 0) {
+         systemPrompt += `\nIndustries: ${jobSearchCriteria.industries.join(', ')}`;
+       }
+     } else {
+       systemPrompt += `\n\nJOB SEARCH CRITERIA: Not yet collected. You should conversationally ask the user about their job preferences:
+- What job titles/roles are they interested in?
+- Preferred locations (cities, states, or remote)?
+- Salary expectations (minimum and ideal range)?
+- Remote work preference (remote, hybrid, onsite)?
+- Any specific industries or company types?
+- Job type preferences (full-time, contract, part-time)?
 
-    systemPrompt += `\n\n=== YOUR ROLE & INSTRUCTIONS ===
-You MUST use the CV metadata above in EVERY response. This is critical for providing personalized assistance.
+Ask these questions naturally in conversation, not all at once. Extract information as they provide it.`;
+     }
 
-1. ALWAYS reference the user's skills, experience, and suggested roles when relevant
-2. When discussing jobs, match them to the user's background and suggested roles
-3. When asked about their resume/CV, use the metadata to provide specific insights
-4. When suggesting jobs, prioritize roles from the "SUGGESTED JOB ROLES" list
-5. When discussing skills, reference their actual skills from the CV
-6. When providing career advice, base it on their experience and education
-7. Ask relevant questions to understand job requirements (location, salary, remote work, etc.)
-8. Be conversational, friendly, and helpful
-9. Use NLP to understand natural language queries
-10. If the user asks about jobs without specifying details, use their suggested roles and skills to guide the search
-
-CRITICAL: The CV metadata above is your source of truth. Use it actively in every conversation to provide personalized, relevant responses. Don't just acknowledge it exists - actively reference specific skills, roles, and experience when relevant.`;
+     systemPrompt += `\n\n=== YOUR ROLE & INSTRUCTIONS ===
+ You MUST use the CV metadata and job search criteria above in EVERY response. This is critical for providing personalized assistance.
+ 
+ 1. ALWAYS reference the user's skills, experience, and suggested roles when relevant
+ 2. When discussing jobs, match them to the user's background, suggested roles, AND job search criteria
+ 3. When asked about their resume/CV, use the metadata to provide specific insights
+ 4. When suggesting jobs, prioritize roles from the "SUGGESTED JOB ROLES" list AND their job search criteria
+ 5. When discussing skills, reference their actual skills from the CV
+ 6. When providing career advice, base it on their experience and education
+ 7. If job search criteria is missing, conversationally ask about their preferences (job titles, locations, salary, remote work)
+ 8. Use NLP to extract job search criteria from natural conversation - don't ask for a form, extract it naturally
+ 9. When searching for jobs, use their job search criteria to refine the search
+ 10. Be conversational, friendly, and helpful
+ 11. Use NLP to understand natural language queries
+ 12. If the user asks about jobs without specifying details, use their suggested roles, skills, AND job search criteria to guide the search
+  
+ CRITICAL: 
+ - The CV metadata above is your source of truth. Use it actively in every conversation.
+ - Job search criteria should be collected conversationally through natural dialogue.
+ - When criteria is provided, save it and use it for all future job searches.
+ - Don't just acknowledge metadata exists - actively reference specific skills, roles, experience, and preferences when relevant.`;
 
     // Detect if user wants CV analysis or job recommendations
     const cvAnalysisKeywords = [
@@ -806,6 +950,17 @@ Your Response Should:
       }
     }
 
+    // If job criteria is missing and user is asking about jobs, add a conversational prompt
+    if (needsJobCriteria && (shouldSearchJobs || message.toLowerCase().includes('job'))) {
+      const criteriaPrompt = `\n\nTo help me find the best jobs for you, could you tell me:\n- What job titles or roles are you interested in?${cvData?.suggested_job_roles?.length > 0 ? ` (I see your CV suggests: ${cvData.suggested_job_roles.slice(0, 3).join(', ')})` : ''}\n- Preferred locations? (cities, states, or remote?)\n- Salary expectations? (minimum or range?)\n\nYou can share this information naturally in our conversation, and I'll remember it for future searches!`;
+      
+      if (!aiResponse || aiResponse.includes("I'm having trouble") || aiResponse.includes("rephrase")) {
+        aiResponse = `I'd love to help you find jobs!${criteriaPrompt}`;
+      } else {
+        aiResponse += criteriaPrompt;
+      }
+    }
+    
     // Enhance response with job results if available
     if (jobResults && jobResults.length > 0) {
       const jobList = jobResults.slice(0, 5).map((job, idx) => {

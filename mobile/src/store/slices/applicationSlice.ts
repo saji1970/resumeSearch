@@ -8,6 +8,12 @@ interface Application {
   application_date: string;
   title?: string;
   company?: string;
+  cover_letter?: string;
+  outcome?: 'positive' | 'negative' | 'pending';
+  outcome_notes?: string;
+  interview_feedback?: string;
+  rejection_reason?: string;
+  outcome_date?: string;
 }
 
 interface ApplicationState {
@@ -49,6 +55,24 @@ export const updateApplicationStatus = createAsyncThunk(
   'applications/updateStatus',
   async ({ id, status, notes }: { id: number; status: string; notes?: string }) => {
     return await applicationAPI.updateStatus(id, status, notes);
+  }
+);
+
+export const updateApplicationOutcome = createAsyncThunk(
+  'applications/updateOutcome',
+  async (data: {
+    id: number;
+    outcome: 'positive' | 'negative' | 'pending';
+    outcome_notes?: string;
+    interview_feedback?: string;
+    rejection_reason?: string;
+  }) => {
+    return await applicationAPI.updateOutcome(data.id, {
+      outcome: data.outcome,
+      outcome_notes: data.outcome_notes,
+      interview_feedback: data.interview_feedback,
+      rejection_reason: data.rejection_reason,
+    });
   }
 );
 

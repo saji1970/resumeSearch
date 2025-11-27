@@ -20,6 +20,10 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   preferences JSONB,
   skills JSONB,
   suggested_job_roles JSONB DEFAULT '[]'::jsonb,
+  linkedin_url VARCHAR(500),
+  other_websites JSONB DEFAULT '[]'::jsonb,
+  job_search_criteria JSONB DEFAULT '{}'::jsonb,
+  extracted_metadata JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(user_id)
@@ -80,7 +84,12 @@ CREATE TABLE IF NOT EXISTS applications (
   status VARCHAR(50) DEFAULT 'applied',
   application_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  notes TEXT
+  notes TEXT,
+  outcome VARCHAR(50),
+  outcome_notes TEXT,
+  outcome_date TIMESTAMP,
+  interview_feedback TEXT,
+  rejection_reason TEXT
 );
 
 -- Application Status History
@@ -110,6 +119,18 @@ CREATE TABLE IF NOT EXISTS skills (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Application Learning Table
+CREATE TABLE IF NOT EXISTS application_learning (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  application_id INTEGER REFERENCES applications(id) ON DELETE CASCADE,
+  outcome VARCHAR(50) NOT NULL,
+  learned_patterns JSONB,
+  profile_refinements JSONB,
+  search_refinements JSONB,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON user_profiles(user_id);
@@ -120,4 +141,7 @@ CREATE INDEX IF NOT EXISTS idx_job_listings_company ON job_listings(company);
 CREATE INDEX IF NOT EXISTS idx_applications_user_id ON applications(user_id);
 CREATE INDEX IF NOT EXISTS idx_applications_job_id ON applications(job_id);
 CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
+CREATE INDEX IF NOT EXISTS idx_applications_outcome ON applications(outcome);
+CREATE INDEX IF NOT EXISTS idx_application_learning_user_id ON application_learning(user_id);
+CREATE INDEX IF NOT EXISTS idx_application_learning_outcome ON application_learning(outcome);
 

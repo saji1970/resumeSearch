@@ -8,3 +8,4 @@ ADD COLUMN IF NOT EXISTS suggested_job_roles JSONB DEFAULT '[]'::jsonb;
 CREATE INDEX IF NOT EXISTS idx_user_profiles_suggested_roles 
 ON user_profiles USING GIN (suggested_job_roles);
 
+
