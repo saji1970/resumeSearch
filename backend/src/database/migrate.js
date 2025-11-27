@@ -29,10 +29,50 @@ async function migrate() {
     const schema = fs.readFileSync(schemaPath, 'utf8');
     
     // Split by semicolons and execute each statement
-    const statements = schema
-      .split(';')
-      .map(stmt => stmt.trim())
-      .filter(stmt => stmt.length > 0);
+    // Handle DO blocks specially - they contain semicolons but should be executed as one statement
+    const statements = [];
+    let currentStatement = '';
+    let inDoBlock = false;
+    let doBlockDepth = 0;
+    
+    const lines = schema.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.toLowerCase().startsWith('do $$')) {
+        inDoBlock = true;
+        doBlockDepth = 1;
+        currentStatement = trimmed;
+      } else if (inDoBlock) {
+        currentStatement += '\n' + line;
+        if (trimmed.toLowerCase().includes('$$')) {
+          doBlockDepth--;
+          if (doBlockDepth === 0) {
+            inDoBlock = false;
+            if (currentStatement.trim().length > 0) {
+              statements.push(currentStatement.trim());
+            }
+            currentStatement = '';
+          }
+        }
+      } else if (trimmed.endsWith(';')) {
+        currentStatement += (currentStatement ? ' ' : '') + trimmed;
+        if (currentStatement.trim().length > 0) {
+          statements.push(currentStatement.trim());
+        }
+        currentStatement = '';
+      } else if (trimmed.length > 0) {
+        currentStatement += (currentStatement ? ' ' : '') + trimmed;
+      }
+    }
+    
+    // Add any remaining statement
+    if (currentStatement.trim().length > 0) {
+      statements.push(currentStatement.trim());
+    }
+    
+    // Filter out empty statements and comments
+    const filteredStatements = statements
+      .filter(stmt => stmt.length > 0 && !stmt.startsWith('--'));
 
     console.log(`Executing ${statements.length} migration statements...`);
     

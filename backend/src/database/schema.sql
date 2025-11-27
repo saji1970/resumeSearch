@@ -134,14 +134,35 @@ CREATE TABLE IF NOT EXISTS application_learning (
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON user_profiles(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_profiles_suggested_roles ON user_profiles USING GIN (suggested_job_roles);
+-- Index for suggested_job_roles - only create if column exists (handled in migration)
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'user_profiles' 
+        AND column_name = 'suggested_job_roles'
+    ) THEN
+        CREATE INDEX IF NOT EXISTS idx_user_profiles_suggested_roles 
+        ON user_profiles USING GIN (suggested_job_roles);
+    END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_resumes_user_id ON resumes(user_id);
 CREATE INDEX IF NOT EXISTS idx_job_listings_title ON job_listings(title);
 CREATE INDEX IF NOT EXISTS idx_job_listings_company ON job_listings(company);
 CREATE INDEX IF NOT EXISTS idx_applications_user_id ON applications(user_id);
 CREATE INDEX IF NOT EXISTS idx_applications_job_id ON applications(job_id);
 CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
-CREATE INDEX IF NOT EXISTS idx_applications_outcome ON applications(outcome);
+-- Index for outcome - only create if column exists
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'applications' 
+        AND column_name = 'outcome'
+    ) THEN
+        CREATE INDEX IF NOT EXISTS idx_applications_outcome ON applications(outcome);
+    END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_application_learning_user_id ON application_learning(user_id);
 CREATE INDEX IF NOT EXISTS idx_application_learning_outcome ON application_learning(outcome);
 
