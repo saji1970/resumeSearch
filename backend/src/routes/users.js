@@ -349,7 +349,15 @@ Return a JSON array of job role titles.`;
     }
 
     if (profileExists.rows.length > 0) {
-      // Update existing profile
+      // Update existing profile - check which columns exist first
+      const colCheck = await pool.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'user_profiles' 
+        AND column_name IN ('linkedin_url', 'other_websites', 'job_search_criteria', 'extracted_metadata', 'suggested_job_roles')
+      `);
+      const existingCols = colCheck.rows.map(r => r.column_name);
+      
       const profileFields = [];
       const profileValues = [];
       let profileParamCount = 1;
@@ -374,19 +382,19 @@ Return a JSON array of job role titles.`;
         profileFields.push(`preferences = $${profileParamCount++}`);
         profileValues.push(JSON.stringify(preferences));
       }
-      if (linkedin_url !== undefined) {
+      if (linkedin_url !== undefined && existingCols.includes('linkedin_url')) {
         profileFields.push(`linkedin_url = $${profileParamCount++}`);
         profileValues.push(linkedin_url);
       }
-      if (parsedOtherWebsites !== undefined) {
+      if (parsedOtherWebsites !== undefined && existingCols.includes('other_websites')) {
         profileFields.push(`other_websites = $${profileParamCount++}`);
         profileValues.push(JSON.stringify(parsedOtherWebsites));
       }
-      if (parsedJobCriteria !== undefined) {
+      if (parsedJobCriteria !== undefined && existingCols.includes('job_search_criteria')) {
         profileFields.push(`job_search_criteria = $${profileParamCount++}`);
         profileValues.push(JSON.stringify(parsedJobCriteria));
       }
-      if (Object.keys(extractedMetadata).length > 0) {
+      if (Object.keys(extractedMetadata).length > 0 && existingCols.includes('extracted_metadata')) {
         // Merge with existing extracted_metadata
         const existingResult = await pool.query(
           'SELECT extracted_metadata FROM user_profiles WHERE user_id = $1',
@@ -404,8 +412,8 @@ Return a JSON array of job role titles.`;
         profileFields.push(`extracted_metadata = $${profileParamCount++}`);
         profileValues.push(JSON.stringify(mergedMetadata));
         
-        // Update suggested_job_roles if extracted
-        if (extractedMetadata.suggested_job_roles) {
+        // Update suggested_job_roles if extracted and column exists
+        if (extractedMetadata.suggested_job_roles && existingCols.includes('suggested_job_roles')) {
           profileFields.push(`suggested_job_roles = $${profileParamCount++}`);
           profileValues.push(JSON.stringify(extractedMetadata.suggested_job_roles));
         }
