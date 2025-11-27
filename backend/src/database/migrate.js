@@ -108,7 +108,7 @@ async function migrate() {
             }
           }
           console.log(`✅ Applied migration: ${file}`);
-        } catch (error: any) {
+        } catch (error) {
           // Ignore errors about column already being correct type or already exists
           if (error.message.includes('already') || 
               error.message.includes('does not exist') ||
