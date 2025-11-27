@@ -246,6 +246,92 @@ router.post('/chat/upload-cv', authenticate, upload.single('cv'), async (req, re
       ];
     }
 
+    // Analyze CV and generate skills/roles summary
+    let skillsSummary = '';
+    let rolesSummary = '';
+    
+    if (parsedData && !parseError && hasOpenAIKey) {
+      try {
+        // Extract all skills
+        const allSkills = [];
+        if (parsedData.skills) {
+          if (parsedData.skills.technical && Array.isArray(parsedData.skills.technical)) {
+            allSkills.push(...parsedData.skills.technical);
+          }
+          if (parsedData.skills.soft && Array.isArray(parsedData.skills.soft)) {
+            allSkills.push(...parsedData.skills.soft);
+          }
+          if (parsedData.skills.languages && Array.isArray(parsedData.skills.languages)) {
+            allSkills.push(...parsedData.skills.languages);
+          }
+        }
+        
+        // Format skills summary
+        if (allSkills.length > 0) {
+          const uniqueSkills = [...new Set(allSkills)];
+          skillsSummary = `\n\n📋 **Skills Identified:**\n${uniqueSkills.map(skill => `• ${skill}`).join('\n')}`;
+        }
+        
+        // Use AI to suggest suitable job roles based on CV
+        const openai = getOpenAIClient();
+        if (openai && parsedData.experience && parsedData.experience.length > 0) {
+          try {
+            const rolePrompt = `Based on this CV analysis, suggest 5-8 specific job roles/titles this candidate would be qualified for. Consider their experience, skills, and education.
+
+Experience: ${JSON.stringify(parsedData.experience.slice(0, 3))}
+Skills: ${JSON.stringify(parsedData.skills)}
+Education: ${JSON.stringify(parsedData.education || [])}
+
+Return a JSON array of job role titles, like: ["Senior Software Engineer", "Product Manager", "Technical Lead"]`;
+
+            const roleResponse = await openai.chat.completions.create({
+              model: 'gpt-4',
+              messages: [
+                {
+                  role: 'system',
+                  content: 'You are a career advisor. Analyze CVs and suggest suitable job roles. Always return a valid JSON array of job titles.'
+                },
+                {
+                  role: 'user',
+                  content: rolePrompt
+                }
+              ],
+              temperature: 0.5,
+              max_tokens: 500
+            });
+
+            const suggestedRoles = JSON.parse(roleResponse.choices[0].message.content);
+            if (Array.isArray(suggestedRoles) && suggestedRoles.length > 0) {
+              rolesSummary = `\n\n🎯 **Suitable Job Roles:**\n${suggestedRoles.map(role => `• ${role}`).join('\n')}`;
+            }
+          } catch (roleError) {
+            console.error('Error generating role suggestions:', roleError);
+            // Fallback: generate roles from experience titles
+            if (parsedData.experience && parsedData.experience.length > 0) {
+              const experienceRoles = parsedData.experience
+                .map(exp => exp.title)
+                .filter((title, index, self) => self.indexOf(title) === index)
+                .slice(0, 5);
+              if (experienceRoles.length > 0) {
+                rolesSummary = `\n\n🎯 **Potential Roles (based on your experience):**\n${experienceRoles.map(role => `• ${role}`).join('\n')}`;
+              }
+            }
+          }
+        } else if (parsedData.experience && parsedData.experience.length > 0) {
+          // Fallback: use experience titles as roles
+          const experienceRoles = parsedData.experience
+            .map(exp => exp.title)
+            .filter((title, index, self) => self.indexOf(title) === index)
+            .slice(0, 5);
+          if (experienceRoles.length > 0) {
+            rolesSummary = `\n\n🎯 **Potential Roles (based on your experience):**\n${experienceRoles.map(role => `• ${role}`).join('\n')}`;
+          }
+        }
+      } catch (analysisError) {
+        console.error('Error analyzing CV:', analysisError);
+      }
+    }
+    
     // Build response message
     let responseMessage;
     if (parseError || !hasOpenAIKey) {
@@ -253,8 +339,7 @@ router.post('/chat/upload-cv', authenticate, upload.single('cv'), async (req, re
         ? `I've received your CV. However, I couldn't fully parse it. ${parsedData.note || ''}\n\nLet me ask you a few questions to better understand what you're looking for:\n\n${questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}`
         : `I've received your CV! ${parsedData.note || ''}\n\nLet me ask you a few questions to better understand what you're looking for:\n\n${questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}`;
     } else {
-      const skillsText = parsedData.skills?.technical?.slice(0, 3).join(', ') || 'various fields';
-      responseMessage = `Great! I've analyzed your CV. I can see you have experience in ${skillsText}. Let me ask you a few questions to better understand what you're looking for:\n\n${questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}`;
+      responseMessage = `✅ **CV Analysis Complete!**\n\nI've analyzed your CV and here's what I found:${skillsSummary}${rolesSummary}\n\n💬 **Next Steps:**\nLet me ask you a few questions to better understand what you're looking for:\n\n${questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}`;
     }
 
     res.json({
