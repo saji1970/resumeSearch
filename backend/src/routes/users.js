@@ -140,7 +140,16 @@ router.put('/profile', authenticate, upload.single('resume'), async (req, res, n
                            process.env.OPENAI_API_KEY !== 'your-openai-api-key';
         
         if (hasOpenAIKey) {
-          resumeData = await parseResume(req.file.path, req.file.mimetype);
+          try {
+            resumeData = await parseResume(req.file.path, req.file.mimetype);
+            console.log('Resume parsed successfully:', resumeData ? 'Yes' : 'No');
+          } catch (parseError) {
+            console.error('Error parsing resume:', parseError);
+            resumeData = {
+              error: parseError.message,
+              note: 'Resume uploaded but parsing failed. Please try again or upload a different format.'
+            };
+          }
           
           // Extract skills and suggest roles
           if (resumeData && !resumeData.error) {
@@ -187,24 +196,51 @@ Return a JSON array of job role titles.`;
                 }
               } catch (roleError) {
                 console.error('Error generating role suggestions:', roleError);
+                // Continue without role suggestions
               }
             }
           }
 
-          // Save resume to database
-          const fileType = req.file.mimetype.substring(0, 255);
-          await pool.query(
-            `INSERT INTO resumes (user_id, file_name, file_path, file_type, parsed_data, is_master)
-             VALUES ($1, $2, $3, $4, $5, true)
-             ON CONFLICT DO NOTHING`,
-            [
-              req.user.id,
-              req.file.originalname,
-              req.file.path,
-              fileType,
-              JSON.stringify(resumeData)
-            ]
-          );
+          // Save resume to database (even if parsing had errors)
+          try {
+            const fileType = req.file.mimetype ? req.file.mimetype.substring(0, 255) : 'application/pdf';
+            await pool.query(
+              `INSERT INTO resumes (user_id, file_name, file_path, file_type, parsed_data, is_master)
+               VALUES ($1, $2, $3, $4, $5, true)
+               ON CONFLICT DO NOTHING`,
+              [
+                req.user.id,
+                req.file.originalname,
+                req.file.path,
+                fileType,
+                JSON.stringify(resumeData || {})
+              ]
+            );
+            console.log('Resume saved to database');
+          } catch (dbError) {
+            console.error('Error saving resume to database:', dbError);
+            // Continue with profile update even if resume save fails
+          }
+        } else {
+          console.log('OpenAI API key not configured, skipping resume parsing');
+          // Still save the file even without parsing
+          try {
+            const fileType = req.file.mimetype ? req.file.mimetype.substring(0, 255) : 'application/pdf';
+            await pool.query(
+              `INSERT INTO resumes (user_id, file_name, file_path, file_type, parsed_data, is_master)
+               VALUES ($1, $2, $3, $4, $5, true)
+               ON CONFLICT DO NOTHING`,
+              [
+                req.user.id,
+                req.file.originalname,
+                req.file.path,
+                fileType,
+                JSON.stringify({ note: 'Resume uploaded but parsing requires OpenAI API key' })
+              ]
+            );
+          } catch (dbError) {
+            console.error('Error saving resume to database:', dbError);
+          }
         }
       } catch (resumeError) {
         console.error('Resume processing error:', resumeError);
