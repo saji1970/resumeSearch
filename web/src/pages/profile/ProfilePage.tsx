@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { AppDispatch, RootState } from '../../store/store'
 import { logout } from '../../store/slices/authSlice'
 import { useNavigate } from 'react-router-dom'
-import { User, Phone, MapPin, LogOut, Settings, Upload, Linkedin, Globe, Briefcase, DollarSign, MapPin as MapIcon, X, Plus } from 'lucide-react'
+import { User, Phone, MapPin, LogOut, Settings, Linkedin, Globe, X } from 'lucide-react'
 import { userAPI, UserProfile } from '../../services/api/userAPI'
 
 export default function ProfilePage() {
