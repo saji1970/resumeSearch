@@ -50,11 +50,28 @@ const upload = multer({
 // Get user profile
 router.get('/profile', authenticate, async (req, res, next) => {
   try {
+    // Check if suggested_job_roles column exists, if not, don't select it
+    let profileColumns = 'up.professional_summary, up.career_goals, up.strengths, up.skills, up.preferences';
+    try {
+      const colCheck = await pool.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'user_profiles' 
+        AND column_name IN ('suggested_job_roles', 'linkedin_url', 'other_websites', 'job_search_criteria', 'extracted_metadata')
+      `);
+      const existingCols = colCheck.rows.map(r => r.column_name);
+      if (existingCols.includes('suggested_job_roles')) profileColumns += ', up.suggested_job_roles';
+      if (existingCols.includes('linkedin_url')) profileColumns += ', up.linkedin_url';
+      if (existingCols.includes('other_websites')) profileColumns += ', up.other_websites';
+      if (existingCols.includes('job_search_criteria')) profileColumns += ', up.job_search_criteria';
+      if (existingCols.includes('extracted_metadata')) profileColumns += ', up.extracted_metadata';
+    } catch (e) {
+      // If check fails, use basic columns only
+    }
+    
     const result = await pool.query(
       `SELECT u.id, u.email, u.name, u.phone, u.location, 
-              up.professional_summary, up.career_goals, up.strengths, up.skills, 
-              up.preferences, up.suggested_job_roles, up.linkedin_url, 
-              up.other_websites, up.job_search_criteria, up.extracted_metadata
+              ${profileColumns}
        FROM users u
        LEFT JOIN user_profiles up ON u.id = up.user_id
        WHERE u.id = $1`,

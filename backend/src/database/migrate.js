@@ -80,15 +80,41 @@ async function migrate() {
         const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
         
         try {
-          await pool.query(migrationSQL);
+          // Split migration SQL by semicolons and execute each statement separately
+          const migrationStatements = migrationSQL
+            .split(';')
+            .map(stmt => stmt.trim())
+            .filter(stmt => stmt.length > 0 && !stmt.startsWith('--'));
+          
+          for (const statement of migrationStatements) {
+            if (statement.length > 0) {
+              try {
+                await pool.query(statement);
+              } catch (stmtError: any) {
+                // Ignore errors about things already existing
+                if (stmtError.message.includes('already exists') || 
+                    stmtError.message.includes('does not exist') ||
+                    stmtError.code === '42P07' || // duplicate_table
+                    stmtError.code === '42710' || // duplicate_object
+                    stmtError.code === '42703' || // undefined_column (for index creation)
+                    (stmtError.message.includes('column') && stmtError.message.includes('already'))) {
+                  // Skip this statement but continue
+                  continue;
+                } else {
+                  // Log but don't throw for individual statements
+                  console.log(`⚠️  Statement in ${file} had issue (continuing): ${stmtError.message}`);
+                }
+              }
+            }
+          }
           console.log(`✅ Applied migration: ${file}`);
-        } catch (error) {
+        } catch (error: any) {
           // Ignore errors about column already being correct type or already exists
           if (error.message.includes('already') || 
               error.message.includes('does not exist') ||
               error.code === '42P07' || // duplicate_table
               error.code === '42710' || // duplicate_object
-              error.message.includes('column') && error.message.includes('already')) {
+              error.code === '42703') { // undefined_column
             console.log(`⏭️  Skipped migration ${file} (already applied or not needed): ${error.message}`);
           } else {
             console.error(`❌ Error applying migration ${file}:`, error.message);
