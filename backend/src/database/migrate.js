@@ -90,7 +90,7 @@ async function migrate() {
             if (statement.length > 0) {
               try {
                 await pool.query(statement);
-              } catch (stmtError: any) {
+              } catch (stmtError) {
                 // Ignore errors about things already existing
                 if (stmtError.message.includes('already exists') || 
                     stmtError.message.includes('does not exist') ||
