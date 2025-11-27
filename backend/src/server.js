@@ -1,42 +1,72 @@
 // Polyfill for File API (required by undici/axios in Node.js 18)
 // This must be defined before any modules that use it are loaded
 if (typeof global.File === 'undefined') {
-  global.File = class File {
-    constructor(bits, name, options = {}) {
-      this.name = name || '';
-      this.lastModified = options.lastModified || Date.now();
-      this.size = Array.isArray(bits) 
-        ? bits.reduce((acc, bit) => acc + (bit.length || bit.size || 0), 0)
-        : (bits ? (bits.length || bits.size || 0) : 0);
-      this.type = options.type || '';
-      this._bits = bits;
+  // Minimal File polyfill that satisfies undici's type checking
+  global.File = function File(bits, name, options) {
+    if (!(this instanceof File)) {
+      throw new TypeError('Failed to construct \'File\': Please use the \'new\' operator.');
     }
-    stream() {
-      // Return a minimal stream-like object
-      const { Readable } = require('stream');
-      return Readable.from([]);
+    
+    if (arguments.length < 2) {
+      throw new TypeError('Failed to construct \'File\': 2 arguments required, but only ' + arguments.length + ' present.');
     }
-    arrayBuffer() {
-      return Promise.resolve(new ArrayBuffer(this.size || 0));
+    
+    this.name = String(name);
+    this.lastModified = (options && options.lastModified) ? Number(options.lastModified) : Date.now();
+    this.size = 0;
+    this.type = (options && options.type) ? String(options.type) : '';
+    
+    // Calculate size if bits is provided
+    if (bits) {
+      if (Array.isArray(bits)) {
+        this.size = bits.reduce((acc, bit) => {
+          if (typeof bit === 'string') return acc + bit.length;
+          if (bit && typeof bit.length === 'number') return acc + bit.length;
+          if (bit && typeof bit.size === 'number') return acc + bit.size;
+          return acc;
+        }, 0);
+      } else if (typeof bits.length === 'number') {
+        this.size = bits.length;
+      } else if (typeof bits.size === 'number') {
+        this.size = bits.size;
+      }
     }
-    text() {
-      return Promise.resolve(Array.isArray(this._bits) ? this._bits.join('') : '');
-    }
-    slice(start, end, contentType) {
-      return new File(
-        Array.isArray(this._bits) ? this._bits.slice(start, end) : [],
-        this.name,
-        { type: contentType || this.type }
-      );
-    }
+    
+    this._bits = bits;
+    this[Symbol.toStringTag] = 'File';
+  };
+  
+  // Add prototype methods
+  global.File.prototype.stream = function() {
+    const { Readable } = require('stream');
+    return Readable.from([]);
+  };
+  
+  global.File.prototype.arrayBuffer = function() {
+    return Promise.resolve(new ArrayBuffer(this.size || 0));
+  };
+  
+  global.File.prototype.text = function() {
+    return Promise.resolve(Array.isArray(this._bits) ? this._bits.join('') : '');
+  };
+  
+  global.File.prototype.slice = function(start, end, contentType) {
+    const slicedBits = Array.isArray(this._bits) ? this._bits.slice(start, end) : [];
+    return new global.File(slicedBits, this.name, { type: contentType || this.type });
   };
   
   // Also define FileList if needed
   if (typeof global.FileList === 'undefined') {
-    global.FileList = class FileList extends Array {
-      item(index) {
-        return this[index] || null;
+    global.FileList = function FileList() {
+      if (!(this instanceof FileList)) {
+        throw new TypeError('Illegal constructor');
       }
+      Array.call(this);
+    };
+    global.FileList.prototype = Object.create(Array.prototype);
+    global.FileList.prototype.constructor = FileList;
+    global.FileList.prototype.item = function(index) {
+      return this[index] || null;
     };
   }
 }
