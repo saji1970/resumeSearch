@@ -206,22 +206,38 @@ router.post('/chat/upload-cv', authenticate, upload.single('cv'), async (req, re
       );
     }
     
-    // Save CV data to user profile if we have skills
-    if (parsedData && parsedData.skills && Object.keys(parsedData.skills).length > 0) {
+    // Save CV analysis metadata to user profile for search functionality
+    if (parsedData) {
       try {
+        // Prepare update data
+        const skillsToSave = parsedData.skills || {};
+        const professionalSummary = parsedData.experience?.[0]?.description || 
+                                   parsedData.professional_summary || 
+                                   '';
+        
+        // Update user profile with skills, suggested roles, and other metadata
         await pool.query(
           `UPDATE user_profiles 
-           SET skills = $1, professional_summary = $2, updated_at = CURRENT_TIMESTAMP
-           WHERE user_id = $3`,
+           SET skills = $1, 
+               professional_summary = $2, 
+               suggested_job_roles = $3,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE user_id = $4`,
           [
-            JSON.stringify(parsedData.skills || {}),
-            parsedData.experience?.[0]?.description || '',
+            JSON.stringify(skillsToSave),
+            professionalSummary,
+            JSON.stringify(suggestedRoles), // Store suggested roles as JSONB array
             req.user.id
           ]
         );
+        
+        console.log('✅ CV metadata saved to user profile:', {
+          skillsCount: Object.keys(skillsToSave).length,
+          rolesCount: suggestedRoles.length
+        });
       } catch (dbError) {
         console.error('Database update error:', dbError);
-        // Don't fail if profile update fails
+        // Don't fail if profile update fails - continue with response
       }
     }
 
@@ -249,11 +265,12 @@ router.post('/chat/upload-cv', authenticate, upload.single('cv'), async (req, re
     // Analyze CV and generate skills/roles summary
     let skillsSummary = '';
     let rolesSummary = '';
+    let suggestedRoles = [];
+    let allSkills = [];
     
     if (parsedData && !parseError && hasOpenAIKey) {
       try {
         // Extract all skills
-        const allSkills = [];
         if (parsedData.skills) {
           if (parsedData.skills.technical && Array.isArray(parsedData.skills.technical)) {
             allSkills.push(...parsedData.skills.technical);
@@ -269,6 +286,7 @@ router.post('/chat/upload-cv', authenticate, upload.single('cv'), async (req, re
         // Format skills summary
         if (allSkills.length > 0) {
           const uniqueSkills = [...new Set(allSkills)];
+          allSkills = uniqueSkills; // Store unique skills
           skillsSummary = `\n\n📋 **Skills Identified:**\n${uniqueSkills.map(skill => `• ${skill}`).join('\n')}`;
         }
         
@@ -300,7 +318,7 @@ Return a JSON array of job role titles, like: ["Senior Software Engineer", "Prod
               max_tokens: 500
             });
 
-            const suggestedRoles = JSON.parse(roleResponse.choices[0].message.content);
+            suggestedRoles = JSON.parse(roleResponse.choices[0].message.content);
             if (Array.isArray(suggestedRoles) && suggestedRoles.length > 0) {
               rolesSummary = `\n\n🎯 **Suitable Job Roles:**\n${suggestedRoles.map(role => `• ${role}`).join('\n')}`;
             }
@@ -308,23 +326,23 @@ Return a JSON array of job role titles, like: ["Senior Software Engineer", "Prod
             console.error('Error generating role suggestions:', roleError);
             // Fallback: generate roles from experience titles
             if (parsedData.experience && parsedData.experience.length > 0) {
-              const experienceRoles = parsedData.experience
+              suggestedRoles = parsedData.experience
                 .map(exp => exp.title)
                 .filter((title, index, self) => self.indexOf(title) === index)
                 .slice(0, 5);
-              if (experienceRoles.length > 0) {
-                rolesSummary = `\n\n🎯 **Potential Roles (based on your experience):**\n${experienceRoles.map(role => `• ${role}`).join('\n')}`;
+              if (suggestedRoles.length > 0) {
+                rolesSummary = `\n\n🎯 **Potential Roles (based on your experience):**\n${suggestedRoles.map(role => `• ${role}`).join('\n')}`;
               }
             }
           }
         } else if (parsedData.experience && parsedData.experience.length > 0) {
           // Fallback: use experience titles as roles
-          const experienceRoles = parsedData.experience
+          suggestedRoles = parsedData.experience
             .map(exp => exp.title)
             .filter((title, index, self) => self.indexOf(title) === index)
             .slice(0, 5);
-          if (experienceRoles.length > 0) {
-            rolesSummary = `\n\n🎯 **Potential Roles (based on your experience):**\n${experienceRoles.map(role => `• ${role}`).join('\n')}`;
+          if (suggestedRoles.length > 0) {
+            rolesSummary = `\n\n🎯 **Potential Roles (based on your experience):**\n${suggestedRoles.map(role => `• ${role}`).join('\n')}`;
           }
         }
       } catch (analysisError) {

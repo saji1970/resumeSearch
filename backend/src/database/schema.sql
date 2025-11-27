@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   strengths TEXT[],
   preferences JSONB,
   skills JSONB,
+  suggested_job_roles JSONB DEFAULT '[]'::jsonb,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(user_id)
@@ -112,6 +113,7 @@ CREATE TABLE IF NOT EXISTS skills (
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON user_profiles(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_profiles_suggested_roles ON user_profiles USING GIN (suggested_job_roles);
 CREATE INDEX IF NOT EXISTS idx_resumes_user_id ON resumes(user_id);
 CREATE INDEX IF NOT EXISTS idx_job_listings_title ON job_listings(title);
 CREATE INDEX IF NOT EXISTS idx_job_listings_company ON job_listings(company);

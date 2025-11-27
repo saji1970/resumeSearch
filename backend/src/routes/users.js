@@ -9,7 +9,8 @@ router.get('/profile', authenticate, async (req, res, next) => {
   try {
     const result = await pool.query(
       `SELECT u.id, u.email, u.name, u.phone, u.location, 
-              up.professional_summary, up.career_goals, up.strengths, up.skills, up.preferences
+              up.professional_summary, up.career_goals, up.strengths, up.skills, 
+              up.preferences, up.suggested_job_roles
        FROM users u
        LEFT JOIN user_profiles up ON u.id = up.user_id
        WHERE u.id = $1`,
