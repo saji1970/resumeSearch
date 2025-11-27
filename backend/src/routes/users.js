@@ -421,24 +421,51 @@ Return a JSON array of job role titles.`;
         );
       }
     } else {
-      // Insert new profile
+      // Insert new profile - check which columns exist first
+      const colCheck = await pool.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'user_profiles' 
+        AND column_name IN ('linkedin_url', 'other_websites', 'job_search_criteria', 'extracted_metadata', 'suggested_job_roles')
+      `);
+      const existingCols = colCheck.rows.map(r => r.column_name);
+      
+      let insertCols = ['user_id', 'professional_summary', 'career_goals', 'strengths', 'skills', 'preferences'];
+      let insertVals = [
+        req.user.id,
+        professional_summary || null,
+        career_goals || null,
+        strengths || null,
+        skills ? JSON.stringify(skills) : null,
+        preferences ? JSON.stringify(preferences) : null
+      ];
+      
+      if (existingCols.includes('linkedin_url')) {
+        insertCols.push('linkedin_url');
+        insertVals.push(linkedin_url || null);
+      }
+      if (existingCols.includes('other_websites')) {
+        insertCols.push('other_websites');
+        insertVals.push(parsedOtherWebsites ? JSON.stringify(parsedOtherWebsites) : '[]');
+      }
+      if (existingCols.includes('job_search_criteria')) {
+        insertCols.push('job_search_criteria');
+        insertVals.push(parsedJobCriteria ? JSON.stringify(parsedJobCriteria) : '{}');
+      }
+      if (existingCols.includes('extracted_metadata')) {
+        insertCols.push('extracted_metadata');
+        insertVals.push(Object.keys(extractedMetadata).length > 0 ? JSON.stringify(extractedMetadata) : '{}');
+      }
+      if (existingCols.includes('suggested_job_roles')) {
+        insertCols.push('suggested_job_roles');
+        insertVals.push(extractedMetadata.suggested_job_roles ? JSON.stringify(extractedMetadata.suggested_job_roles) : '[]');
+      }
+      
+      const placeholders = insertVals.map((_, i) => `$${i + 1}`).join(', ');
       await pool.query(
-        `INSERT INTO user_profiles (user_id, professional_summary, career_goals, strengths, skills, preferences, 
-         linkedin_url, other_websites, job_search_criteria, extracted_metadata, suggested_job_roles)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-        [
-          req.user.id,
-          professional_summary || null,
-          career_goals || null,
-          strengths || null,
-          skills ? JSON.stringify(skills) : null,
-          preferences ? JSON.stringify(preferences) : null,
-          linkedin_url || null,
-          parsedOtherWebsites ? JSON.stringify(parsedOtherWebsites) : '[]',
-          parsedJobCriteria ? JSON.stringify(parsedJobCriteria) : '{}',
-          Object.keys(extractedMetadata).length > 0 ? JSON.stringify(extractedMetadata) : '{}',
-          extractedMetadata.suggested_job_roles ? JSON.stringify(extractedMetadata.suggested_job_roles) : '[]'
-        ]
+        `INSERT INTO user_profiles (${insertCols.join(', ')})
+         VALUES (${placeholders})`,
+        insertVals
       );
     }
 
