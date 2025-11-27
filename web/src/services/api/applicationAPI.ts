@@ -29,6 +29,19 @@ export const applicationAPI = {
     })
     return response.data
   },
+
+  updateOutcome: async (
+    id: number,
+    data: {
+      outcome: 'positive' | 'negative' | 'pending'
+      outcome_notes?: string
+      interview_feedback?: string
+      rejection_reason?: string
+    }
+  ) => {
+    const response = await apiClient.patch(`/applications/${id}/outcome`, data)
+    return response.data
+  },
 }
 
 
