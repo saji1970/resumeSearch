@@ -413,10 +413,13 @@ Return a JSON array of job role titles.`;
       profileFields.push(`updated_at = CURRENT_TIMESTAMP`);
       profileValues.push(req.user.id);
 
-      await pool.query(
-        `UPDATE user_profiles SET ${profileFields.join(', ')} WHERE user_id = $${profileParamCount}`,
-        profileValues
-      );
+      // Only update if there are fields to update
+      if (profileFields.length > 1) { // More than just updated_at
+        await pool.query(
+          `UPDATE user_profiles SET ${profileFields.join(', ')} WHERE user_id = $${profileParamCount}`,
+          profileValues
+        );
+      }
     } else {
       // Insert new profile
       await pool.query(
@@ -445,7 +448,17 @@ Return a JSON array of job role titles.`;
       extractedMetadata: Object.keys(extractedMetadata).length > 0 ? extractedMetadata : undefined
     });
   } catch (error) {
-    next(error);
+    console.error('Profile update error:', error);
+    // Return more detailed error information
+    if (error.code === '42703') { // undefined_column
+      res.status(500).json({ 
+        error: 'Database schema error',
+        message: 'Some profile columns may not exist. Please run migrations.',
+        details: error.message
+      });
+    } else {
+      next(error);
+    }
   }
 });
 
