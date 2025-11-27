@@ -1,3 +1,46 @@
+// Polyfill for File API (required by undici/axios in Node.js 18)
+// This must be defined before any modules that use it are loaded
+if (typeof global.File === 'undefined') {
+  global.File = class File {
+    constructor(bits, name, options = {}) {
+      this.name = name || '';
+      this.lastModified = options.lastModified || Date.now();
+      this.size = Array.isArray(bits) 
+        ? bits.reduce((acc, bit) => acc + (bit.length || bit.size || 0), 0)
+        : (bits ? (bits.length || bits.size || 0) : 0);
+      this.type = options.type || '';
+      this._bits = bits;
+    }
+    stream() {
+      // Return a minimal stream-like object
+      const { Readable } = require('stream');
+      return Readable.from([]);
+    }
+    arrayBuffer() {
+      return Promise.resolve(new ArrayBuffer(this.size || 0));
+    }
+    text() {
+      return Promise.resolve(Array.isArray(this._bits) ? this._bits.join('') : '');
+    }
+    slice(start, end, contentType) {
+      return new File(
+        Array.isArray(this._bits) ? this._bits.slice(start, end) : [],
+        this.name,
+        { type: contentType || this.type }
+      );
+    }
+  };
+  
+  // Also define FileList if needed
+  if (typeof global.FileList === 'undefined') {
+    global.FileList = class FileList extends Array {
+      item(index) {
+        return this[index] || null;
+      }
+    };
+  }
+}
+
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
